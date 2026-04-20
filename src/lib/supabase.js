@@ -331,35 +331,43 @@ export async function getSchoolAssignments(schoolId) {
   return data ?? []
 }
 
-// Every profile row attached to this school. Used to populate the admin
-// roster, the "Specific users" assignment picker, and per-user lookups.
+// ---------- Admin: members / schools ----------
+
+// Return every profile belonging to a school (admin-only via RLS).
 export async function getSchoolMembers(schoolId) {
+  if (MOCK_MODE) return []
   const { data, error } = await supabase
     .from('profiles')
     .select('id, email, full_name, role, school_id')
     .eq('school_id', schoolId)
-    .order('full_name', { ascending: true })
+    .order('full_name', { ascending: true, nullsFirst: false })
   if (error) throw error
-  return data ?? []
+  return (data ?? []).map(row => ({
+    ...row,
+    completions: {},
+  }))
 }
 
-// Admin edit — update a member's name/role, and (superadmin) their school.
-// RLS enforces that regular admins can only edit members of their own school.
+// Update a member's editable profile fields. Callers should pass only
+// the keys they want to change; schoolId is superadmin-only.
 export async function updateMemberProfile({ userId, fullName, role, schoolId }) {
-  const patch = {}
-  if (fullName !== undefined) patch.full_name = fullName
-  if (role     !== undefined) patch.role      = role
-  if (schoolId !== undefined) patch.school_id = schoolId
+  if (MOCK_MODE) { await wait(100); return }
+  const payload = {}
+  if (fullName !== undefined) payload.full_name = fullName
+  if (role     !== undefined) payload.role      = role
+  if (schoolId !== undefined) payload.school_id = schoolId
+  if (Object.keys(payload).length === 0) return
   const { error } = await supabase
     .from('profiles')
-    .update(patch)
+    .update(payload)
     .eq('id', userId)
   if (error) throw error
 }
 
-// All schools — used by the superadmin "move member to school" dropdown.
-// RLS should restrict this to superadmins only.
+// Every school in the system. Only used by superadmin UIs; RLS on the
+// `schools` table enforces that regular admins get their own school only.
 export async function getAllSchools() {
+  if (MOCK_MODE) return []
   const { data, error } = await supabase
     .from('schools')
     .select('id, name')
@@ -539,13 +547,19 @@ export async function updateInviteBatchCounts(batchId, { imported, failed, statu
   if (error) throw error
 }
 
-export async function inviteUser({ email, fullName, role, schoolId }) {
+export async function inviteUser({ email, fullName, role, schoolId, welcomeMessage }) {
   if (MOCK_MODE) {
     await wait(150)
     return { ok: true, user_id: `mock-user-${Date.now()}` }
   }
   const { data, error } = await supabase.functions.invoke('invite-user', {
-    body: { email, full_name: fullName, role, school_id: schoolId },
+    body: {
+      email,
+      full_name: fullName,
+      role,
+      school_id: schoolId,
+      ...(welcomeMessage ? { welcome_message: welcomeMessage } : {}),
+    },
   })
   if (error) throw error
   return data

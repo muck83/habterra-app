@@ -345,6 +345,16 @@ export default function AdminDashboard() {
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError]   = useState('')
 
+  // "Add new member" modal — invite + optional auto-assign modules with due dates.
+  const [addMemberOpen, setAddMemberOpen] = useState(false)
+  const [addMemberForm, setAddMemberForm] = useState({
+    email: '', fullName: '', role: 'teacher',
+    selectedModules: {}, // { slug: 'yyyy-mm-dd' } — presence = selected
+    welcomeMessage: '',
+  })
+  const [addMemberSaving, setAddMemberSaving] = useState(false)
+  const [addMemberError, setAddMemberError]   = useState('')
+
   // First-run "what Habterra is (and isn't)" explainer. Dismissal persists per-admin in localStorage.
   const primerKey = `calibrate.adminPrimerDismissed.${user?.id ?? 'anon'}`
   const [primerDismissed, setPrimerDismissed] = useState(() => {
@@ -660,6 +670,108 @@ export default function AdminDashboard() {
       setEditError(err?.message ?? 'Failed to save. Please try again.')
     } finally {
       setEditSaving(false)
+    }
+  }
+
+  // "Add new member" modal: open / close / module toggle / submit.
+  function openAddMember() {
+    setAddMemberForm({
+      email: '', fullName: '',
+      role: 'teacher',
+      selectedModules: {},
+      welcomeMessage: '',
+    })
+    setAddMemberError('')
+    setAddMemberOpen(true)
+  }
+
+  function closeAddMember() {
+    setAddMemberOpen(false)
+    setAddMemberError('')
+  }
+
+  function toggleAddMemberModule(slug) {
+    setAddMemberForm(f => {
+      const next = { ...f.selectedModules }
+      if (slug in next) delete next[slug]
+      else next[slug] = ''
+      return { ...f, selectedModules: next }
+    })
+  }
+
+  function setAddMemberModuleDue(slug, due) {
+    setAddMemberForm(f => ({
+      ...f,
+      selectedModules: { ...f.selectedModules, [slug]: due },
+    }))
+  }
+
+  async function handleAddMember() {
+    const email = addMemberForm.email.trim().toLowerCase()
+    const fullName = addMemberForm.fullName.trim()
+    const role = addMemberForm.role
+    const schoolId = profile?.school_id ?? MOCK_SCHOOL.id
+    const moduleEntries = Object.entries(addMemberForm.selectedModules)
+    const welcomeMessage = addMemberForm.welcomeMessage.trim()
+
+    setAddMemberError('')
+
+    if (!isValidEmail(email)) {
+      setAddMemberError('Please enter a valid email address.')
+      return
+    }
+    if (!fullName) {
+      setAddMemberError("Please enter the member's full name.")
+      return
+    }
+    if (!schoolId) {
+      setAddMemberError('No school selected. Contact support if this persists.')
+      return
+    }
+
+    setAddMemberSaving(true)
+    try {
+      const result = await inviteUser({
+        email, fullName, role, schoolId,
+        welcomeMessage: welcomeMessage || undefined,
+        assignedBy: user?.id,
+      })
+      const newUserId = result?.user_id ?? result?.userId ?? null
+
+      // In prod, create assignments for each selected module.
+      if (!MOCK_MODE && newUserId && moduleEntries.length > 0) {
+        for (const [slug, due] of moduleEntries) {
+          try {
+            await createAssignment({
+              schoolId,
+              userId: newUserId,
+              roleTarget: role,
+              moduleSlug: slug,
+              assignedBy: user?.id,
+              dueDate: due || null,
+            })
+          } catch (err) {
+            // Don't abort: surface in console so partial success is recoverable.
+            console.warn(`Failed to assign ${slug} to ${email}:`, err)
+          }
+        }
+      }
+
+      // Optimistic: add the new row so admin sees them immediately, then refresh.
+      setMembers(prev => [
+        ...prev,
+        {
+          id: newUserId ?? `pending-${Date.now()}`,
+          email, full_name: fullName, role, school_id: schoolId,
+          completions: {},
+        },
+      ])
+      setMembersRefreshKey(k => k + 1)
+      setAddMemberOpen(false)
+    } catch (err) {
+      setAddMemberError(err?.message ?? 'Failed to add member. Please try again.')
+    } finally {
+      setAddMemberSaving(false)
     }
   }
 
@@ -1211,11 +1323,21 @@ export default function AdminDashboard() {
           {/* ════════════════ MEMBERS ════════════════ */}
           {adminView === 'users' && (
             <>
-              <div style={{ marginBottom: 28 }}>
-                <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, color: 'var(--cal-ink)', marginBottom: 4 }}>Members</h2>
-                <p style={{ fontSize: 13, color: 'var(--cal-muted)' }}>
-                  {members.length} members enrolled at {schoolName}
-                </p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, marginBottom: 28, flexWrap: 'wrap' }}>
+                <div>
+                  <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, color: 'var(--cal-ink)', marginBottom: 4 }}>Members</h2>
+                  <p style={{ fontSize: 13, color: 'var(--cal-muted)' }}>
+                    {members.length} members enrolled at {schoolName}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={openAddMember}
+                  className="btn"
+                  style={{ fontSize: 12, fontWeight: 600, padding: '9px 16px', background: 'var(--cal-teal)', color: '#fff', borderRadius: 'var(--r-full)' }}
+                >
+                  + Add new member
+                </button>
               </div>
 
               {/* Role filter */}
@@ -2295,6 +2417,183 @@ export default function AdminDashboard() {
                 >
                   Close
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════ ADD NEW MEMBER MODAL ════════════════ */}
+      {addMemberOpen && (
+        <div
+          onClick={closeAddMember}
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgba(0,0,0,0.45)',
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+            padding: '60px 20px 20px', zIndex: 1000, overflowY: 'auto',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff', borderRadius: 'var(--r-lg)',
+              maxWidth: 560, width: '100%',
+              boxShadow: 'var(--shadow-lg)',
+              padding: 28,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 }}>
+              <div>
+                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700, color: 'var(--cal-ink)', marginBottom: 4 }}>
+                  Add new member
+                </h3>
+                <p style={{ fontSize: 12, color: 'var(--cal-muted)' }}>
+                  Invite a teacher, parent, or admin and optionally pre-assign modules.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeAddMember}
+                aria-label="Close"
+                style={{ border: 'none', background: 'transparent', fontSize: 22, color: 'var(--cal-muted)', cursor: 'pointer', lineHeight: 1 }}
+              >×</button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--cal-ink-soft)', marginBottom: 5 }}>
+                  Full name
+                </label>
+                <input
+                  className="input"
+                  type="text"
+                  value={addMemberForm.fullName}
+                  onChange={e => setAddMemberForm(f => ({ ...f, fullName: e.target.value }))}
+                  placeholder="e.g. Eric Schoonard"
+                  style={{ width: '100%' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--cal-ink-soft)', marginBottom: 5 }}>
+                  Email
+                </label>
+                <input
+                  className="input"
+                  type="email"
+                  value={addMemberForm.email}
+                  onChange={e => setAddMemberForm(f => ({ ...f, email: e.target.value }))}
+                  placeholder="name@school.org"
+                  style={{ width: '100%' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--cal-ink-soft)', marginBottom: 5 }}>
+                  Role
+                </label>
+                <select
+                  value={addMemberForm.role}
+                  onChange={e => setAddMemberForm(f => ({ ...f, role: e.target.value }))}
+                  style={{
+                    width: '100%', padding: '9px 12px', fontSize: 13,
+                    border: '1.5px solid var(--cal-border)', borderRadius: 'var(--r-sm)',
+                    background: '#fff', cursor: 'pointer',
+                  }}
+                >
+                  <option value="teacher">Teacher</option>
+                  <option value="parent">Parent</option>
+                  <option value="admin">Admin</option>
+                  {isSuperAdmin && <option value="superadmin">Superadmin</option>}
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--cal-ink-soft)', marginBottom: 8 }}>
+                  Modules to auto-assign <span style={{ color: 'var(--cal-muted)', fontWeight: 500 }}>(optional)</span>
+                </label>
+                <div style={{
+                  border: '1px solid var(--cal-border-lt)', borderRadius: 'var(--r-sm)',
+                  maxHeight: 200, overflowY: 'auto',
+                }}>
+                  {Object.entries(MODULE_META).filter(([, m]) => !m.inDev).map(([slug, m], i, arr) => {
+                    const checked = slug in addMemberForm.selectedModules
+                    return (
+                      <div key={slug} style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '8px 12px',
+                        borderBottom: i < arr.length - 1 ? '1px solid var(--cal-border-lt)' : 'none',
+                        background: checked ? 'var(--cal-teal-lt)' : 'transparent',
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleAddMemberModule(slug)}
+                          style={{ cursor: 'pointer' }}
+                        />
+                        <div style={{ flex: 1, fontSize: 12 }}>
+                          <span>{m.flag} {m.label?.replace('Understand ', '') ?? slug}</span>
+                        </div>
+                        {checked && (
+                          <input
+                            type="date"
+                            value={addMemberForm.selectedModules[slug] ?? ''}
+                            onChange={e => setAddMemberModuleDue(slug, e.target.value)}
+                            style={{
+                              fontSize: 11, padding: '4px 6px',
+                              border: '1px solid var(--cal-border)', borderRadius: 'var(--r-sm)',
+                            }}
+                            title="Due date (optional)"
+                          />
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--cal-ink-soft)', marginBottom: 5 }}>
+                  Welcome message <span style={{ color: 'var(--cal-muted)', fontWeight: 500 }}>(optional)</span>
+                </label>
+                <textarea
+                  value={addMemberForm.welcomeMessage}
+                  onChange={e => setAddMemberForm(f => ({ ...f, welcomeMessage: e.target.value }))}
+                  placeholder="Short note that goes out with the invite email."
+                  rows={3}
+                  style={{
+                    width: '100%', padding: '9px 12px', fontSize: 13,
+                    border: '1.5px solid var(--cal-border)', borderRadius: 'var(--r-sm)',
+                    fontFamily: 'inherit', resize: 'vertical',
+                  }}
+                />
+                <div style={{ fontSize: 10, color: 'var(--cal-muted)', marginTop: 4 }}>
+                  Passed to the invite edge function as <code>welcome_message</code>; ignored until the backend surfaces it.
+                </div>
+              </div>
+
+              {addMemberError && (
+                <div style={{ background: '#FFEBEE', color: '#C62828', padding: '8px 12px', borderRadius: 'var(--r-sm)', fontSize: 12 }}>
+                  {addMemberError}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 6 }}>
+                <button
+                  type="button"
+                  onClick={closeAddMember}
+                  disabled={addMemberSaving}
+                  className="btn"
+                  style={{ fontSize: 12, padding: '8px 14px', background: 'transparent', border: '1px solid var(--cal-border)', color: 'var(--cal-ink)' }}
+                >Cancel</button>
+                <button
+                  type="button"
+                  onClick={handleAddMember}
+                  disabled={addMemberSaving || !addMemberForm.email.trim() || !addMemberForm.fullName.trim()}
+                  className="btn"
+                  style={{ fontSize: 12, padding: '8px 14px', background: 'var(--cal-teal)', color: '#fff' }}
+                >{addMemberSaving ? 'Adding…' : 'Send invite & add'}</button>
               </div>
             </div>
           </div>
