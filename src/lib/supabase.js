@@ -547,21 +547,44 @@ export async function updateInviteBatchCounts(batchId, { imported, failed, statu
   if (error) throw error
 }
 
-export async function inviteUser({ email, fullName, role, schoolId, welcomeMessage }) {
+export async function inviteUser({ email, fullName, role, schoolId, welcomeMessage, sendEmail = true }) {
   if (MOCK_MODE) {
     await wait(150)
     return { ok: true, user_id: `mock-user-${Date.now()}` }
   }
+  // welcome_message is held client-side until the edge function supports it.
+  // Passing unknown keys trips strict-schema validators → non-2xx response.
+  void welcomeMessage
+  const body = {
+    email,
+    full_name: fullName,
+    role,
+    school_id: schoolId,
+  }
+  // Opt-out: skip the invite email and create the user directly. Requires
+  // invite-user edge function to honor the skip_email flag (see
+  // grade_overrides_migration.sql + invite-user/index.ts in /supabase).
+  if (sendEmail === false) body.skip_email = true
   const { data, error } = await supabase.functions.invoke('invite-user', {
-    body: {
-      email,
-      full_name: fullName,
-      role,
-      school_id: schoolId,
-      ...(welcomeMessage ? { welcome_message: welcomeMessage } : {}),
-    },
+    body,
   })
-  if (error) throw error
+  if (error) {
+    // supabase-js wraps the edge-function body inside error.context — try to
+    // surface it so admins see the real message instead of a generic "non-2xx".
+    let detail = error.message ?? 'Invite failed.'
+    try {
+      const ctx = error.context
+      if (ctx && typeof ctx.text === 'function') {
+        const body = await ctx.text()
+        if (body) detail = `${detail} — ${body}`
+      } else if (ctx && typeof ctx === 'object' && 'body' in ctx) {
+        detail = `${detail} — ${JSON.stringify(ctx.body)}`
+      }
+    } catch (_) {
+      // Non-fatal: keep the generic message.
+    }
+    throw new Error(detail)
+  }
   return data
 }
 

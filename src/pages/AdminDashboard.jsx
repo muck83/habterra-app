@@ -357,6 +357,7 @@ export default function AdminDashboard() {
     email: '', fullName: '', role: 'teacher',
     selectedModules: {}, // { slug: 'yyyy-mm-dd' } — presence = selected
     welcomeMessage: '',
+    sendEmail: true,
   })
   const [addMemberSaving, setAddMemberSaving] = useState(false)
   const [addMemberError, setAddMemberError]   = useState('')
@@ -768,6 +769,7 @@ export default function AdminDashboard() {
       role: 'teacher',
       selectedModules: {},
       welcomeMessage: '',
+      sendEmail: true,
     })
     setAddMemberError('')
     setAddMemberOpen(true)
@@ -822,6 +824,7 @@ export default function AdminDashboard() {
       const result = await inviteUser({
         email, fullName, role, schoolId,
         welcomeMessage: welcomeMessage || undefined,
+        sendEmail: addMemberForm.sendEmail !== false,
         assignedBy: user?.id,
       })
       const newUserId = result?.user_id ?? result?.userId ?? null
@@ -3005,8 +3008,29 @@ export default function AdminDashboard() {
                   }}
                 />
                 <div style={{ fontSize: 10, color: 'var(--cal-muted)', marginTop: 4 }}>
-                  Passed to the invite edge function as <code>welcome_message</code>; ignored until the backend surfaces it.
+                  Held in the form; ignored until the invite edge function surfaces <code>welcome_message</code>.
                 </div>
+              </div>
+
+              <div style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10,
+                padding: 10, borderRadius: 'var(--r-sm)',
+                background: 'var(--cal-surface)',
+                border: '1px solid var(--cal-border-lt)',
+              }}>
+                <input
+                  id="add-member-send-email"
+                  type="checkbox"
+                  checked={addMemberForm.sendEmail !== false}
+                  onChange={e => setAddMemberForm(f => ({ ...f, sendEmail: e.target.checked }))}
+                  style={{ marginTop: 2, cursor: 'pointer' }}
+                />
+                <label htmlFor="add-member-send-email" style={{ fontSize: 12, color: 'var(--cal-ink)', cursor: 'pointer', flex: 1 }}>
+                  <span style={{ fontWeight: 600 }}>Send invite email</span>
+                  <div style={{ fontSize: 10, color: 'var(--cal-muted)', marginTop: 2 }}>
+                    When off, the member is created silently (no email). They’ll appear in the roster immediately; you can share a sign-in link manually later.
+                  </div>
+                </label>
               </div>
 
               {addMemberError && (
@@ -3029,7 +3053,7 @@ export default function AdminDashboard() {
                   disabled={addMemberSaving || !addMemberForm.email.trim() || !addMemberForm.fullName.trim()}
                   className="btn"
                   style={{ fontSize: 12, padding: '8px 14px', background: 'var(--cal-teal)', color: '#fff' }}
-                >{addMemberSaving ? 'Adding…' : 'Send invite & add'}</button>
+                >{addMemberSaving ? 'Adding…' : (addMemberForm.sendEmail !== false ? 'Send invite & add' : 'Create silently')}</button>
               </div>
             </div>
           </div>
