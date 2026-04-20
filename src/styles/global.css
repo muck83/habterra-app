@@ -1,0 +1,224 @@
+@import './tokens.css';
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--cal-ink);
+  background: var(--cal-off);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Typography helpers ── */
+.font-display { font-family: var(--font-display); }
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+/* ── Button base ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  border: none;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+  text-decoration: none;
+}
+.btn:hover  { opacity: 0.88; }
+.btn:active { transform: scale(0.98); }
+
+.btn-primary {
+  background: var(--cal-teal);
+  color: white;
+  padding: 12px 20px;
+}
+.btn-amber {
+  background: var(--cal-amber);
+  color: white;
+  padding: 12px 20px;
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--cal-teal);
+  padding: 10px 16px;
+}
+.btn-full { width: 100%; }
+
+/* ── Input base ── */
+.input {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--cal-ink);
+  background: var(--cal-white);
+  border: 1.5px solid var(--cal-border);
+  border-radius: var(--r-md);
+  padding: 11px 14px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.input:focus {
+  border-color: var(--cal-teal);
+  box-shadow: 0 0 0 3px var(--cal-teal-lt);
+}
+.input::placeholder { color: var(--cal-muted); }
+
+/* ── Chip / badge ── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: var(--r-full);
+}
+.badge-assigned { background: var(--cal-info-lt);    color: var(--cal-info); }
+.badge-progress  { background: var(--cal-amber-lt);  color: var(--cal-amber-dark); }
+.badge-done      { background: var(--cal-success-lt); color: var(--cal-success); }
+.badge-soon      { background: var(--cal-border-lt); color: var(--cal-muted); }
+
+/* ── Progress bar ── */
+.progress-track {
+  height: 4px;
+  background: var(--cal-border-lt);
+  border-radius: var(--r-full);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: var(--r-full);
+  background: var(--cal-teal);
+  transition: width 0.4s ease;
+}
+.progress-fill.amber { background: var(--cal-amber); }
+.progress-fill.green { background: var(--cal-success); }
+
+/* ── Card ── */
+.card {
+  background: var(--cal-white);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── Utilities ── */
+.text-muted   { color: var(--cal-muted); }
+.text-teal    { color: var(--cal-teal); }
+.text-amber   { color: var(--cal-amber); }
+.label-caps {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--cal-muted);
+}
+
+/* ── Responsive ── */
+
+/* Tablet: hide brand panel on login, collapse sidebars */
+@media (max-width: 768px) {
+  /* Login split layout → stack vertically */
+  .login-split {
+    flex-direction: column !important;
+    height: auto !important;
+    min-height: 100vh;
+  }
+  .login-brand {
+    display: none !important;
+  }
+
+  /* Dashboard / app sidebar → hidden */
+  .app-sidebar {
+    display: none !important;
+  }
+  .admin-sidebar {
+    display: none !important;
+  }
+
+  /* Main content gets full width */
+  main {
+    padding: 20px 16px !important;
+  }
+
+  /* TopBar: shrink padding */
+  header {
+    padding: 0 14px !important;
+  }
+
+  /* Admin matrix: allow horizontal scroll */
+  .admin-matrix-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Module cards grid → single column */
+  .module-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Stat cards: 2×2 grid */
+  .stat-row {
+    flex-wrap: wrap !important;
+  }
+  .stat-row > * {
+    min-width: calc(50% - 8px) !important;
+    flex: 0 0 calc(50% - 8px) !important;
+  }
+
+  /* Assign form grid → single column */
+  .assign-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Mobile: tighter spacing */
+@media (max-width: 480px) {
+  /* Stat cards → full width */
+  .stat-row > * {
+    min-width: 100% !important;
+    flex: 0 0 100% !important;
+  }
+
+  /* Login form panel */
+  .login-split > div:last-child {
+    padding: 32px 24px !important;
+  }
+
+  /* TopBar nav: hide non-essential labels */
+  .topbar-nav-label {
+    display: none;
+  }
+
+  /* Tables: smaller text */
+  table {
+    font-size: 12px;
+  }
+
+  /* Module view content */
+  .module-content-wrap {
+    padding: 16px !important;
+  }
+}

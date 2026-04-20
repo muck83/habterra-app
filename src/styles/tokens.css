@@ -1,0 +1,59 @@
+/* ── Habterra Design Tokens ── */
+:root {
+  /* Brand colours */
+  --cal-teal:      #0B5563;
+  --cal-teal-dark: #083D4A;
+  --cal-teal-lt:   #E6F2F4;
+  --cal-amber:     #E8961E;
+  --cal-amber-lt:  #FEF3DC;
+  --cal-amber-dark:#B06000;
+
+  /* Neutrals */
+  --cal-off:       #F7F4EF;
+  --cal-white:     #FFFFFF;
+  --cal-ink:       #1A1C1E;
+  --cal-ink-soft:  #3A3C3E;
+  --cal-muted:     #6B7785;
+  --cal-border:    #E2DDD6;
+  --cal-border-lt: #F0EDE8;
+  --cal-surface:   #F2EFE9;
+
+  /* Semantic */
+  --cal-success:   #2E7D32;
+  --cal-success-lt:#E8F5E9;
+  --cal-info:      #1565C0;
+  --cal-info-lt:   #E8F4FD;
+  --cal-warn-lt:   #FEF3DC;
+
+  /* Typography — Fraunces (display serif) + Inter (body sans) */
+  --font-display: 'Fraunces', 'Georgia', serif;
+  --font-body:    'Inter', -apple-system, system-ui, sans-serif;
+
+  /* Spacing scale */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+  --sp-16: 64px;
+
+  /* Radii */
+  --r-sm:  6px;
+  --r-md:  10px;
+  --r-lg:  14px;
+  --r-xl:  20px;
+  --r-full: 999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 4px rgba(0,0,0,0.07);
+  --shadow-md: 0 3px 12px rgba(0,0,0,0.09);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
+
+  /* Sidebar */
+  --sidebar-w: 220px;
+  --topbar-h:  52px;
+}

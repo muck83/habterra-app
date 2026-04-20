@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+
+# builds
+dist/
+dist_*/
+dist.bak*/
+
+# local env
+.env
+.env.local
+.env.*.local
+
+# editor / system / Word temp
+*.log
+*.tmp
+*.new
+*.bak
+.DS_Store
+~$*
+
+# Vite timestamps
+vite.config.js.timestamp-*
+
+# Supabase local
+supabase/.temp/
+supabase/.branches/
