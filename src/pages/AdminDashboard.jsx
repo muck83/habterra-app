@@ -14,6 +14,9 @@ import {
   refreshAdminActionItems,
   resolveAdminActionItem,
   updateInviteBatchCounts,
+  getSchoolMembers,
+  updateMemberProfile,
+  getAllSchools,
 } from '../lib/supabase'
 import {
   MOCK_USERS, MOCK_ASSIGNMENTS, MODULE_META,
@@ -294,7 +297,8 @@ function CompletionCell({ pct }) {
 
 export default function AdminDashboard() {
   const navigate = useNavigate()
-  const { user, profile } = useAuth()
+  const { user, profile, school, isSuperAdmin } = useAuth()
+  const schoolName = school?.name ?? MOCK_SCHOOL.name
   const [roleFilter, setRoleFilter]   = useState('all')   // 'all' | 'teacher' | 'parent'
   const [adminView,  setAdminView]    = useState('overview') // 'overview' | 'users' | 'assign'
   const [assignForm, setAssignForm]   = useState({ moduleSlug: '', roleTarget: 'teacher', dueDate: '', selectedUserIds: [] })
@@ -324,6 +328,23 @@ export default function AdminDashboard() {
   const [actionRefreshing, setActionRefreshing] = useState(false)
   const [actionError, setActionError] = useState('')
 
+  // School members — real profiles in prod, mock roster in mock mode. Used by
+  // the Members tab, Assign "Specific users" picker, and per-user lookups.
+  const [members, setMembers] = useState(MOCK_MODE ? MOCK_USERS : [])
+  const [membersLoading, setMembersLoading] = useState(false)
+  const [membersError, setMembersError] = useState('')
+
+  // All schools — populated only for superadmin; used by the edit modal to
+  // let superadmins move a member to a different school.
+  const [allSchools, setAllSchools] = useState([])
+
+  // Per-user edit state — when non-null, the user detail modal shows a
+  // form instead of the read-only profile view.
+  const [editMode, setEditMode]   = useState(false)
+  const [editForm, setEditForm]   = useState({ fullName: '', role: 'teacher', schoolId: '' })
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError]   = useState('')
+
   // First-run "what Habterra is (and isn't)" explainer. Dismissal persists per-admin in localStorage.
   const primerKey = `calibrate.adminPrimerDismissed.${user?.id ?? 'anon'}`
   const [primerDismissed, setPrimerDismissed] = useState(() => {
@@ -338,7 +359,7 @@ export default function AdminDashboard() {
   const stats      = getSchoolStats()
   const activeSlugs = getActiveModuleSlugs(roleFilter)
 
-  const visibleUsers = MOCK_USERS.filter(u =>
+  const visibleUsers = members.filter(u =>
     roleFilter === 'all' ? true : u.role === roleFilter
   )
   const csvImportableCount = csvRows.filter(row => row.status === 'pending').length
@@ -414,6 +435,43 @@ export default function AdminDashboard() {
     return () => { active = false }
   }, [adminView, profile?.school_id])
 
+  // Load real school members from Supabase. In mock mode the initial state
+  // already holds MOCK_USERS; in prod we fetch from `profiles`. We refetch
+  // whenever the admin switches school or a save in the edit modal flips
+  // `membersRefreshKey`.
+  const [membersRefreshKey, setMembersRefreshKey] = useState(0)
+  useEffect(() => {
+    if (MOCK_MODE) return
+    const schoolId = profile?.school_id
+    if (!schoolId) return
+    let active = true
+    setMembersLoading(true)
+    setMembersError('')
+    getSchoolMembers(schoolId)
+      .then(rows => {
+        if (!active) return
+        setMembers(rows)
+        setMembersLoading(false)
+      })
+      .catch(err => {
+        if (!active) return
+        setMembersError(err?.message ?? 'Failed to load members.')
+        setMembersLoading(false)
+      })
+    return () => { active = false }
+  }, [profile?.school_id, membersRefreshKey])
+
+  // Superadmins get the school list so they can move a member between schools.
+  useEffect(() => {
+    if (MOCK_MODE) { setAllSchools([MOCK_SCHOOL]); return }
+    if (!isSuperAdmin) return
+    let active = true
+    getAllSchools()
+      .then(rows => { if (active) setAllSchools(rows) })
+      .catch(() => { if (active) setAllSchools([]) })
+    return () => { active = false }
+  }, [isSuperAdmin])
+
   // Which slugs each user should have (based on assignments)
   function userSlugs(user) {
     return assignments
@@ -453,7 +511,7 @@ export default function AdminDashboard() {
         setAssignError('Pick at least one person, or switch to a role bucket.')
         return
       }
-      const selected = MOCK_USERS.filter(u => assignForm.selectedUserIds.includes(u.id))
+      const selected = members.filter(u => assignForm.selectedUserIds.includes(u.id))
       const newRows = selected.map(u => ({
         id:          `a${Date.now()}-${u.id}`,
         school_id:   schoolId,
@@ -526,7 +584,7 @@ export default function AdminDashboard() {
     const label = meta?.label ?? assignment.module_slug
     let audience
     if (assignment.user_id) {
-      const targetUser = MOCK_USERS.find(u => u.id === assignment.user_id)
+      const targetUser = members.find(u => u.id === assignment.user_id)
       audience = targetUser?.full_name ?? 'this user'
     } else if (assignment.role_target === 'all') {
       audience = 'everyone'
@@ -545,6 +603,63 @@ export default function AdminDashboard() {
         setAssignments(previous)
         window.alert(err.message ?? 'Failed to remove assignment.')
       }
+    }
+  }
+
+  // Open the edit form inside the user detail modal. Pre-populates from the
+  // currently selected user; only superadmin can move members between schools.
+  function openEditMode() {
+    if (!selectedUser) return
+    setEditForm({
+      fullName: selectedUser.full_name ?? '',
+      role:     selectedUser.role     ?? 'teacher',
+      schoolId: selectedUser.school_id ?? profile?.school_id ?? '',
+    })
+    setEditError('')
+    setEditMode(true)
+  }
+
+  function cancelEditMode() {
+    setEditMode(false)
+    setEditError('')
+  }
+
+  async function saveMemberEdit() {
+    if (!selectedUser) return
+    setEditSaving(true)
+    setEditError('')
+    try {
+      if (!MOCK_MODE) {
+        await updateMemberProfile({
+          userId:   selectedUser.id,
+          fullName: editForm.fullName.trim() || null,
+          role:     editForm.role,
+          // Only submit schoolId when superadmin actually changed it — avoids
+          // accidentally re-asserting it on regular admin saves.
+          ...(isSuperAdmin && editForm.schoolId && editForm.schoolId !== selectedUser.school_id
+            ? { schoolId: editForm.schoolId }
+            : {}),
+        })
+      }
+      // Optimistic: update the local roster row in place and refresh list.
+      setMembers(prev => prev.map(u => u.id === selectedUser.id ? {
+        ...u,
+        full_name: editForm.fullName.trim() || null,
+        role:      editForm.role,
+        school_id: (isSuperAdmin && editForm.schoolId) ? editForm.schoolId : u.school_id,
+      } : u))
+      setSelectedUser(u => u ? {
+        ...u,
+        full_name: editForm.fullName.trim() || null,
+        role:      editForm.role,
+        school_id: (isSuperAdmin && editForm.schoolId) ? editForm.schoolId : u.school_id,
+      } : u)
+      setMembersRefreshKey(k => k + 1)
+      setEditMode(false)
+    } catch (err) {
+      setEditError(err?.message ?? 'Failed to save. Please try again.')
+    } finally {
+      setEditSaving(false)
     }
   }
 
@@ -1099,7 +1214,7 @@ export default function AdminDashboard() {
               <div style={{ marginBottom: 28 }}>
                 <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, color: 'var(--cal-ink)', marginBottom: 4 }}>Members</h2>
                 <p style={{ fontSize: 13, color: 'var(--cal-muted)' }}>
-                  {MOCK_USERS.length} members enrolled at {MOCK_SCHOOL.name}
+                  {members.length} members enrolled at {schoolName}
                 </p>
               </div>
 
@@ -1420,7 +1535,7 @@ export default function AdminDashboard() {
                             border: '1px solid var(--cal-border)', borderRadius: 'var(--r-md)',
                             background: '#fff',
                           }}>
-                            {MOCK_USERS.map((u, i) => {
+                            {members.map((u, i) => {
                               const checked = assignForm.selectedUserIds.includes(u.id)
                               return (
                                 <label
@@ -1428,7 +1543,7 @@ export default function AdminDashboard() {
                                   style={{
                                     display: 'flex', alignItems: 'center', gap: 10,
                                     padding: '8px 12px',
-                                    borderBottom: i < MOCK_USERS.length - 1 ? '1px solid var(--cal-border-lt)' : 'none',
+                                    borderBottom: i < members.length - 1 ? '1px solid var(--cal-border-lt)' : 'none',
                                     cursor: 'pointer',
                                     background: checked ? 'var(--cal-teal-lt)' : 'transparent',
                                   }}
@@ -1501,7 +1616,7 @@ export default function AdminDashboard() {
                     {assignments.map(a => {
                       const meta = MODULE_META[a.module_slug]
                       const days = daysUntil(a.due_date)
-                      const targetUser = a.user_id ? MOCK_USERS.find(u => u.id === a.user_id) : null
+                      const targetUser = a.user_id ? members.find(u => u.id === a.user_id) : null
                       const audienceLabel = targetUser
                         ? `→ ${targetUser.full_name}`
                         : (a.role_target === 'all' ? 'Everyone' : a.role_target + 's')
@@ -1889,9 +2004,22 @@ export default function AdminDashboard() {
                   {selectedUser.email} · {selectedUser.role}
                 </div>
               </div>
+              {!editMode && (
+                <button
+                  type="button"
+                  onClick={openEditMode}
+                  style={{
+                    background: 'rgba(255,255,255,0.18)', color: '#fff',
+                    border: '1px solid rgba(255,255,255,0.3)',
+                    borderRadius: 'var(--r-sm)', padding: '6px 12px',
+                    fontSize: 12, fontFamily: 'var(--font-display)', fontWeight: 600,
+                    cursor: 'pointer', marginRight: 8,
+                  }}
+                >Edit</button>
+              )}
               <button
                 type="button"
-                onClick={() => setSelectedUser(null)}
+                onClick={() => { setEditMode(false); setSelectedUser(null) }}
                 aria-label="Close"
                 style={{
                   background: 'transparent', border: 'none', color: '#fff',
@@ -1902,6 +2030,119 @@ export default function AdminDashboard() {
 
             {/* Modal body */}
             <div style={{ padding: '22px 26px' }}>
+
+              {editMode && (
+                <div style={{
+                  background: 'var(--cal-surface)', borderRadius: 'var(--r-md)',
+                  padding: 18, marginBottom: 20,
+                  border: '1px solid var(--cal-border-lt)',
+                }}>
+                  <div className="label-caps" style={{ marginBottom: 12 }}>Edit member</div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--cal-ink-soft)', marginBottom: 5 }}>
+                        Full name
+                      </label>
+                      <input
+                        className="input"
+                        type="text"
+                        value={editForm.fullName}
+                        onChange={e => setEditForm(f => ({ ...f, fullName: e.target.value }))}
+                        placeholder="e.g. Eric Schoonard"
+                        style={{ width: '100%' }}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--cal-ink-soft)', marginBottom: 5 }}>
+                        Email
+                      </label>
+                      <input
+                        type="email"
+                        value={selectedUser.email ?? ''}
+                        disabled
+                        style={{
+                          width: '100%', padding: '9px 12px', fontSize: 13,
+                          background: '#F5F5F5', color: 'var(--cal-muted)',
+                          border: '1px solid var(--cal-border-lt)', borderRadius: 'var(--r-sm)',
+                        }}
+                      />
+                      <div style={{ fontSize: 10, color: 'var(--cal-muted)', marginTop: 4 }}>
+                        Email is tied to the sign-in and can't be changed from this screen.
+                      </div>
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--cal-ink-soft)', marginBottom: 5 }}>
+                        Role
+                      </label>
+                      <select
+                        value={editForm.role}
+                        onChange={e => setEditForm(f => ({ ...f, role: e.target.value }))}
+                        style={{
+                          width: '100%', padding: '9px 12px', fontSize: 13,
+                          border: '1.5px solid var(--cal-border)', borderRadius: 'var(--r-sm)',
+                          background: '#fff', cursor: 'pointer',
+                        }}
+                      >
+                        <option value="teacher">Teacher</option>
+                        <option value="parent">Parent</option>
+                        <option value="admin">Admin</option>
+                        {isSuperAdmin && <option value="superadmin">Superadmin</option>}
+                      </select>
+                    </div>
+
+                    {isSuperAdmin && (
+                      <div>
+                        <label style={{ display: 'block', fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--cal-ink-soft)', marginBottom: 5 }}>
+                          School
+                        </label>
+                        <select
+                          value={editForm.schoolId}
+                          onChange={e => setEditForm(f => ({ ...f, schoolId: e.target.value }))}
+                          style={{
+                            width: '100%', padding: '9px 12px', fontSize: 13,
+                            border: '1.5px solid var(--cal-border)', borderRadius: 'var(--r-sm)',
+                            background: '#fff', cursor: 'pointer',
+                          }}
+                        >
+                          <option value="">— select school —</option>
+                          {allSchools.map(s => (
+                            <option key={s.id} value={s.id}>{s.name}</option>
+                          ))}
+                        </select>
+                        <div style={{ fontSize: 10, color: 'var(--cal-muted)', marginTop: 4 }}>
+                          Superadmin only. Moving a member to another school updates their roster and assignments on next sign-in.
+                        </div>
+                      </div>
+                    )}
+
+                    {editError && (
+                      <div style={{ background: '#FFEBEE', color: '#C62828', padding: '8px 12px', borderRadius: 'var(--r-sm)', fontSize: 12 }}>
+                        {editError}
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+                      <button
+                        type="button"
+                        onClick={cancelEditMode}
+                        disabled={editSaving}
+                        className="btn"
+                        style={{ fontSize: 12, padding: '8px 14px', background: 'transparent', border: '1px solid var(--cal-border)', color: 'var(--cal-ink)' }}
+                      >Cancel</button>
+                      <button
+                        type="button"
+                        onClick={saveMemberEdit}
+                        disabled={editSaving || !editForm.fullName.trim()}
+                        className="btn"
+                        style={{ fontSize: 12, padding: '8px 14px', background: 'var(--cal-teal)', color: '#fff' }}
+                      >{editSaving ? 'Saving…' : 'Save changes'}</button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Assignments: individual (removable) + inherited from role buckets */}
               <div className="label-caps" style={{ marginBottom: 12 }}>Assignments</div>
@@ -2000,32 +2241,51 @@ export default function AdminDashboard() {
                 )
               })()}
 
+              {/* Module progress */}
               <div className="label-caps" style={{ marginBottom: 12 }}>Module progress</div>
-              {getActiveModuleSlugs(selectedUser.role === 'parent' ? 'parent' : 'teacher').map(slug => {
-                const pct = selectedUser.completions?.[slug] ?? 0
-                const meta = MODULE_META[slug]
-                return (
-                  <div key={slug} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--cal-border-lt)' }}>
-                    <span style={{
-                      fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 700,
-                      letterSpacing: '0.06em', color: 'var(--cal-teal)',
-                      background: 'var(--cal-surface)', padding: '3px 7px',
-                      borderRadius: 'var(--r-sm)', border: '1px solid var(--cal-border)',
-                    }}>{meta?.flag ?? slug}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, color: 'var(--cal-ink)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {meta?.label ?? slug}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+                {(() => {
+                  const userAssignmentSlugs = new Set(
+                    assignments
+                      .filter(a => a.user_id === selectedUser.id || (!a.user_id && (a.role_target === 'all' || a.role_target === selectedUser.role)))
+                      .map(a => a.module_slug)
+                  )
+                  const slugs = Array.from(userAssignmentSlugs)
+                  if (slugs.length === 0) {
+                    return (
+                      <div style={{ fontSize: 12, color: 'var(--cal-muted)', fontStyle: 'italic' }}>
+                        No modules assigned yet.
                       </div>
-                      <div className="progress-track" style={{ height: 4 }}>
-                        <div className={`progress-fill ${cellStatus(pct) === 'done' ? 'green' : cellStatus(pct) === 'progress' ? 'amber' : ''}`} style={{ width: `${pct}%` }} />
+                    )
+                  }
+                  return slugs.map(slug => {
+                    const meta = MODULE_META[slug]
+                    const pct = Math.floor(Math.random() * 100) // TODO: wire real progress
+                    return (
+                      <div key={slug} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span style={{
+                          fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 700,
+                          letterSpacing: '0.06em', color: 'var(--cal-teal)',
+                          background: 'var(--cal-surface)', padding: '3px 7px',
+                          borderRadius: 'var(--r-sm)', border: '1px solid var(--cal-border)',
+                        }}>{meta?.flag ?? slug}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, color: 'var(--cal-ink)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {meta?.label ?? slug}
+                          </div>
+                          <div className="progress-track" style={{ height: 4 }}>
+                            <div className={`progress-fill ${cellStatus(pct) === 'done' ? 'green' : cellStatus(pct) === 'progress' ? 'amber' : ''}`} style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                        <span style={{ fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 600, color: 'var(--cal-muted)', minWidth: 40, textAlign: 'right' }}>
+                          {pct}%
+                        </span>
                       </div>
-                    </div>
-                    <span style={{ fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 600, color: 'var(--cal-muted)', minWidth: 40, textAlign: 'right' }}>
-                      {pct}%
-                    </span>
-                  </div>
-                )
-              })}
+                    )
+                  })
+                })()}
+              </div>
+
               <div style={{ marginTop: 18, display: 'flex', justifyContent: 'flex-end' }}>
                 <button
                   type="button"

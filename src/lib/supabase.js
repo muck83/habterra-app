@@ -331,6 +331,43 @@ export async function getSchoolAssignments(schoolId) {
   return data ?? []
 }
 
+// Every profile row attached to this school. Used to populate the admin
+// roster, the "Specific users" assignment picker, and per-user lookups.
+export async function getSchoolMembers(schoolId) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, email, full_name, role, school_id')
+    .eq('school_id', schoolId)
+    .order('full_name', { ascending: true })
+  if (error) throw error
+  return data ?? []
+}
+
+// Admin edit — update a member's name/role, and (superadmin) their school.
+// RLS enforces that regular admins can only edit members of their own school.
+export async function updateMemberProfile({ userId, fullName, role, schoolId }) {
+  const patch = {}
+  if (fullName !== undefined) patch.full_name = fullName
+  if (role     !== undefined) patch.role      = role
+  if (schoolId !== undefined) patch.school_id = schoolId
+  const { error } = await supabase
+    .from('profiles')
+    .update(patch)
+    .eq('id', userId)
+  if (error) throw error
+}
+
+// All schools — used by the superadmin "move member to school" dropdown.
+// RLS should restrict this to superadmins only.
+export async function getAllSchools() {
+  const { data, error } = await supabase
+    .from('schools')
+    .select('id, name')
+    .order('name', { ascending: true })
+  if (error) throw error
+  return data ?? []
+}
+
 // ---------- PD Module content ----------
 
 export async function getModule(dbId) {
