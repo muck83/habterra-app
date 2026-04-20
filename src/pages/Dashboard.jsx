@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { getAssignments, getCompletions } from '../lib/supabase'
+import { getAssignments, getCompletions, deleteAssignment } from '../lib/supabase'
 import TopBar from '../components/TopBar'
 import ModuleCard from '../components/ModuleCard'
 import ErrorState from '../components/ErrorState'
@@ -65,6 +65,27 @@ export default function Dashboard() {
 
     return () => { active = false; clearTimeout(timer) }
   }, [user?.id, profile?.school_id, retryCount])
+
+  // Admins/superadmins can unassign a module from themselves directly from
+  // My Modules — handy for clearing duplicates from testing. Non-admin users
+  // see no remove button; they can still ask their admin via the user detail
+  // modal in AdminDashboard.
+  const canRemove = profile?.role === 'admin' || profile?.role === 'superadmin'
+  async function handleRemove(assignment) {
+    const label = MODULE_LABELS[assignment.module_slug] ?? assignment.module_slug
+    const dueStr = assignment.due_date
+      ? new Date(assignment.due_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+      : 'no due date'
+    if (!window.confirm(`Remove "${label}" (${dueStr}) from your assignments?`)) return
+    const previous = assignments
+    setAssignments(prev => prev.filter(a => a.id !== assignment.id))
+    try {
+      await deleteAssignment(assignment.id)
+    } catch (err) {
+      setAssignments(previous)
+      window.alert(err?.message ?? 'Failed to remove this assignment.')
+    }
+  }
 
   const greeting = greetingWord()
   const firstName = profile?.full_name?.split(' ')[0] ?? profile?.email?.split('@')[0] ?? 'there'
@@ -250,6 +271,7 @@ export default function Dashboard() {
                   key={a.id}
                   assignment={a}
                   completion={completions[a.module_slug] ?? null}
+                  onRemove={canRemove ? () => handleRemove(a) : null}
                 />
               ))}
             </div>
@@ -278,6 +300,7 @@ export default function Dashboard() {
 
 function greetingWord() {
   const h = new Date().getHours()
+  if (h < 5)  return 'Good evening'
   if (h < 12) return 'Good morning'
   if (h < 17) return 'Good afternoon'
   return 'Good evening'

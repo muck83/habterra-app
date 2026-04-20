@@ -12,7 +12,7 @@ const MODULE_META = {
   'uae-ib':               { flag: 'AE', label: 'Understand UAE',                     lang: 'EN / AR',      desc: 'Wasta, school choice as social capital, and the Emirati family inside a global curriculum.', inDev: true },
 }
 
-export default function ModuleCard({ assignment, completion }) {
+export default function ModuleCard({ assignment, completion, onRemove = null }) {
   const navigate = useNavigate()
   const meta     = MODULE_META[assignment.module_slug] ?? {
     flag: '--', label: assignment.module_slug, lang: 'EN', desc: '',
@@ -35,13 +35,30 @@ export default function ModuleCard({ assignment, completion }) {
     : null
 
   const handleOpen = () => {
-    // Woodstock is handled inside ModuleView (/module/:slug) which delegates
-    // to WoodstockModuleView — same route pattern as every other module.
     navigate(`/module/${assignment.module_slug}`)
   }
 
   return (
-    <div className="card" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 0 }}>
+    <div className="card" style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 0, position: 'relative' }}>
+      {onRemove && (
+        <button
+          type="button"
+          onClick={e => { e.stopPropagation(); onRemove() }}
+          aria-label="Remove this assignment"
+          title="Remove this assignment"
+          style={{
+            position: 'absolute', top: 8, right: 8,
+            width: 22, height: 22, borderRadius: '50%',
+            border: '1px solid var(--cal-border)',
+            background: '#fff', color: 'var(--cal-muted)',
+            fontSize: 13, lineHeight: 1,
+            cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 0,
+            zIndex: 2,
+          }}
+        >×</button>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
         <span style={{
           fontFamily: 'var(--font-display)',
@@ -54,7 +71,7 @@ export default function ModuleCard({ assignment, completion }) {
           borderRadius: 'var(--r-sm)',
           border: '1px solid var(--cal-border)',
         }}>{meta.flag}</span>
-        <span className={`badge ${statusClass}`}>{statusLabel}</span>
+        <span className={`badge ${statusClass}`} style={{ marginRight: onRemove ? 28 : 0 }}>{statusLabel}</span>
       </div>
 
       <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 600, color: 'var(--cal-teal)', marginBottom: 2 }}>
@@ -76,7 +93,6 @@ export default function ModuleCard({ assignment, completion }) {
         <span>{done ? 'Complete' : `${pct}% complete`}</span>
         {dueStr && <span>Due {dueStr}</span>}
       </div>
-
 
       <button
         className="btn"

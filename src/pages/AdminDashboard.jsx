@@ -23,6 +23,7 @@ import {
   getSchoolMembers,
   updateMemberProfile,
   getAllSchools,
+  adminSendPasswordReset,
 } from '../lib/supabase'
 import {
   MOCK_USERS, MOCK_ASSIGNMENTS, MODULE_META,
@@ -305,7 +306,8 @@ export default function AdminDashboard() {
   const navigate = useNavigate()
   const { user, profile, school, isSuperAdmin } = useAuth()
   const schoolName = school?.name ?? MOCK_SCHOOL.name
-  const [roleFilter, setRoleFilter]   = useState('all')   // 'all' | 'teacher' | 'parent'
+  const [roleFilter, setRoleFilter]   = useState('all')   // 'all' | 'teacher' | 'parent' | 'admin' | 'superadmin'
+  const [memberSearch, setMemberSearch] = useState('')
   const [adminView,  setAdminView]    = useState('overview') // 'overview' | 'users' | 'assign'
   const [assignForm, setAssignForm]   = useState({ moduleSlug: '', roleTarget: 'teacher', dueDate: '', selectedUserIds: [] })
   const [assignments, setAssignments] = useState(MOCK_ASSIGNMENTS)
@@ -358,6 +360,7 @@ export default function AdminDashboard() {
     selectedModules: {}, // { slug: 'yyyy-mm-dd' } — presence = selected
     welcomeMessage: '',
     sendEmail: true,
+    initialPassword: '', // empty = no pre-set password (normal invite flow)
   })
   const [addMemberSaving, setAddMemberSaving] = useState(false)
   const [addMemberError, setAddMemberError]   = useState('')
@@ -390,6 +393,9 @@ export default function AdminDashboard() {
   const [gradeOverrideSaving, setGradeOverrideSaving] = useState(false)
   const [gradeOverrideError,  setGradeOverrideError]  = useState('')
 
+  // Admin-triggered password reset: { status: 'idle'|'sending'|'sent'|'error', message?: string }
+  const [resetStatus, setResetStatus] = useState({ status: 'idle' })
+
   // First-run "what Habterra is (and isn't)" explainer. Dismissal persists per-admin in localStorage.
   const primerKey = `calibrate.adminPrimerDismissed.${user?.id ?? 'anon'}`
   const [primerDismissed, setPrimerDismissed] = useState(() => {
@@ -404,9 +410,14 @@ export default function AdminDashboard() {
   const stats      = getSchoolStats()
   const activeSlugs = getActiveModuleSlugs(roleFilter)
 
-  const visibleUsers = members.filter(u =>
-    roleFilter === 'all' ? true : u.role === roleFilter
-  )
+  const visibleUsers = members.filter(u => {
+    if (roleFilter !== 'all' && u.role !== roleFilter) return false
+    const q = memberSearch.trim().toLowerCase()
+    if (!q) return true
+    const name  = (u.full_name ?? '').toLowerCase()
+    const email = (u.email     ?? '').toLowerCase()
+    return name.includes(q) || email.includes(q)
+  })
   const csvImportableCount = csvRows.filter(row => row.status === 'pending').length
   const openActionCount = actionItems.length
 
@@ -560,10 +571,12 @@ export default function AdminDashboard() {
     return () => { cancelled = true }
   }, [selectedUser?.id, userDetailRefreshKey])
 
-  // Superadmins get the school list so they can move a member between schools.
+  // Fetch the full school list so both superadmins (who can move any member)
+  // and regular users (who may need to fix their own school_id) get a picker.
+  // If RLS blocks the read, we fall back to an empty list — the edit modal
+  // injects the caller's current school as a selectable option anyway.
   useEffect(() => {
     if (MOCK_MODE) { setAllSchools([MOCK_SCHOOL]); return }
-    if (!isSuperAdmin) return
     let active = true
     getAllSchools()
       .then(rows => { if (active) setAllSchools(rows) })
@@ -728,16 +741,18 @@ export default function AdminDashboard() {
     setEditSaving(true)
     setEditError('')
     try {
+      // Superadmins can move any member; non-superadmins can only change the
+      // school on their own record (self-service fix for a bad school_id).
+      const canEditSchool = isSuperAdmin || (profile && selectedUser.id === profile.id)
+      const schoolIdChanging = canEditSchool
+        && editForm.schoolId
+        && editForm.schoolId !== selectedUser.school_id
       if (!MOCK_MODE) {
         await updateMemberProfile({
           userId:   selectedUser.id,
           fullName: editForm.fullName.trim() || null,
           role:     editForm.role,
-          // Only submit schoolId when superadmin actually changed it — avoids
-          // accidentally re-asserting it on regular admin saves.
-          ...(isSuperAdmin && editForm.schoolId && editForm.schoolId !== selectedUser.school_id
-            ? { schoolId: editForm.schoolId }
-            : {}),
+          ...(schoolIdChanging ? { schoolId: editForm.schoolId } : {}),
         })
       }
       // Optimistic: update the local roster row in place and refresh list.
@@ -745,13 +760,13 @@ export default function AdminDashboard() {
         ...u,
         full_name: editForm.fullName.trim() || null,
         role:      editForm.role,
-        school_id: (isSuperAdmin && editForm.schoolId) ? editForm.schoolId : u.school_id,
+        school_id: schoolIdChanging ? editForm.schoolId : u.school_id,
       } : u))
       setSelectedUser(u => u ? {
         ...u,
         full_name: editForm.fullName.trim() || null,
         role:      editForm.role,
-        school_id: (isSuperAdmin && editForm.schoolId) ? editForm.schoolId : u.school_id,
+        school_id: schoolIdChanging ? editForm.schoolId : u.school_id,
       } : u)
       setMembersRefreshKey(k => k + 1)
       setEditMode(false)
@@ -770,6 +785,7 @@ export default function AdminDashboard() {
       selectedModules: {},
       welcomeMessage: '',
       sendEmail: true,
+      initialPassword: '',
     })
     setAddMemberError('')
     setAddMemberOpen(true)
@@ -803,6 +819,7 @@ export default function AdminDashboard() {
     const schoolId = profile?.school_id ?? MOCK_SCHOOL.id
     const moduleEntries = Object.entries(addMemberForm.selectedModules)
     const welcomeMessage = addMemberForm.welcomeMessage.trim()
+    const initialPassword = (addMemberForm.initialPassword ?? '').trim()
 
     setAddMemberError('')
 
@@ -818,13 +835,22 @@ export default function AdminDashboard() {
       setAddMemberError('No school selected. Contact support if this persists.')
       return
     }
+    if (initialPassword && initialPassword.length < 8) {
+      setAddMemberError('Initial password must be at least 8 characters.')
+      return
+    }
 
     setAddMemberSaving(true)
     try {
+      // When an initial password is set we skip the invite email — the admin
+      // is expected to hand the password over out-of-band. Otherwise honor
+      // the admin's `sendEmail` toggle.
+      const sendEmail = initialPassword ? false : (addMemberForm.sendEmail !== false)
       const result = await inviteUser({
         email, fullName, role, schoolId,
         welcomeMessage: welcomeMessage || undefined,
-        sendEmail: addMemberForm.sendEmail !== false,
+        sendEmail,
+        password: initialPassword || undefined,
         assignedBy: user?.id,
       })
       const newUserId = result?.user_id ?? result?.userId ?? null
@@ -1246,6 +1272,7 @@ export default function AdminDashboard() {
             { key: 'overview',   icon: '▦', label: 'Overview' },
             { key: 'users',      icon: '⊡', label: 'Members' },
             { key: 'actions',    icon: '!', label: `Action Queue${openActionCount ? ` (${openActionCount})` : ''}` },
+            { key: 'modules',    icon: '▲', label: 'Modules' },
             { key: 'assign',     icon: '+', label: 'Assign Modules' },
             { key: 'analytics',  icon: '◈', label: 'Quiz Analytics' },
             { key: 'invite',     icon: '→', label: 'Invite Member' },
@@ -1572,35 +1599,83 @@ export default function AdminDashboard() {
                     {members.length} members enrolled at {schoolName}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={openAddMember}
-                  className="btn"
-                  style={{ fontSize: 12, fontWeight: 600, padding: '9px 16px', background: 'var(--cal-teal)', color: '#fff', borderRadius: 'var(--r-full)' }}
-                >
-                  + Add new member
-                </button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {profile && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Open the detail modal with the caller's own record so they can edit
+                        // their school, role, assignments, and grades.
+                        const mine = members.find(m => m.id === profile.id)
+                        setSelectedUser(mine ?? {
+                          id: profile.id,
+                          email: profile.email,
+                          full_name: profile.full_name ?? '',
+                          role: profile.role,
+                          school_id: profile.school_id,
+                          completions: {},
+                        })
+                      }}
+                      className="btn"
+                      style={{ fontSize: 12, fontWeight: 600, padding: '9px 16px', background: 'transparent', color: 'var(--cal-ink)', border: '1.5px solid var(--cal-border)', borderRadius: 'var(--r-full)' }}
+                    >
+                      Edit my account
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={openAddMember}
+                    className="btn"
+                    style={{ fontSize: 12, fontWeight: 600, padding: '9px 16px', background: 'var(--cal-teal)', color: '#fff', borderRadius: 'var(--r-full)' }}
+                  >
+                    + Add new member
+                  </button>
+                </div>
               </div>
 
-              {/* Role filter */}
-              <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
-                {['all', 'teacher', 'parent'].map(f => (
-                  <button
-                    key={f}
-                    onClick={() => setRoleFilter(f)}
-                    style={{
-                      fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 600,
-                      padding: '6px 14px', borderRadius: 'var(--r-full)',
-                      border: '1.5px solid',
-                      borderColor: roleFilter === f ? 'var(--cal-teal)' : 'var(--cal-border)',
-                      background: roleFilter === f ? 'var(--cal-teal)' : 'transparent',
-                      color: roleFilter === f ? '#fff' : 'var(--cal-muted)',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {f === 'all' ? 'All' : f === 'teacher' ? 'Teachers' : 'Parents'}
-                  </button>
-                ))}
+              {/* Role filter + search */}
+              <div style={{ display: 'flex', gap: 10, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {['all', 'teacher', 'parent', 'admin', 'superadmin'].map(f => (
+                    <button
+                      key={f}
+                      onClick={() => setRoleFilter(f)}
+                      style={{
+                        fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 600,
+                        padding: '6px 14px', borderRadius: 'var(--r-full)',
+                        border: '1.5px solid',
+                        borderColor: roleFilter === f ? 'var(--cal-teal)' : 'var(--cal-border)',
+                        background: roleFilter === f ? 'var(--cal-teal)' : 'transparent',
+                        color: roleFilter === f ? '#fff' : 'var(--cal-muted)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {f === 'all' ? 'All'
+                        : f === 'teacher' ? 'Teachers'
+                        : f === 'parent' ? 'Parents'
+                        : f === 'admin' ? 'Admins'
+                        : 'Superadmins'}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  value={memberSearch}
+                  onChange={e => setMemberSearch(e.target.value)}
+                  placeholder="Search by name or email…"
+                  style={{
+                    flex: '1 1 240px', minWidth: 220, maxWidth: 360,
+                    padding: '7px 12px', fontSize: 13,
+                    border: '1.5px solid var(--cal-border)',
+                    borderRadius: 'var(--r-full)',
+                    background: '#fff',
+                    fontFamily: 'var(--font-body)',
+                    outline: 'none',
+                  }}
+                />
+                <span style={{ fontSize: 11, color: 'var(--cal-muted)', fontFamily: 'var(--font-display)' }}>
+                  {visibleUsers.length} of {members.length}
+                </span>
               </div>
 
               <div style={{ background: '#fff', borderRadius: 'var(--r-lg)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
@@ -1619,10 +1694,12 @@ export default function AdminDashboard() {
                       const slugs = userSlugs(user)
                       const doneCount = slugs.filter(s => (user.completions[s] ?? 0) >= 80).length
                       const overallPct = userOverallPct(user)
+                      const isSelf = profile && user.id === profile.id
                       return (
                         <tr key={user.id} style={{ background: i % 2 === 0 ? '#fff' : 'var(--cal-surface)', cursor: 'pointer' }}
                           onMouseEnter={e => e.currentTarget.style.background = 'var(--cal-teal-lt)'}
                           onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? '#fff' : 'var(--cal-surface)'}
+                          onClick={() => setSelectedUser(user)}
                         >
                           <td style={{ padding: '13px 20px', borderBottom: '1px solid var(--cal-border-lt)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -1636,7 +1713,17 @@ export default function AdminDashboard() {
                                 {user.full_name.split(' ').map(n => n[0]).join('').slice(0, 2)}
                               </div>
                               <div>
-                                <div style={{ fontSize: 13, fontWeight: 500 }}>{user.full_name}</div>
+                                <div style={{ fontSize: 13, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  {user.full_name}
+                                  {isSelf && (
+                                    <span style={{
+                                      fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
+                                      padding: '2px 7px', borderRadius: 'var(--r-full)',
+                                      background: 'var(--cal-teal)', color: '#fff',
+                                      textTransform: 'uppercase',
+                                    }}>You</span>
+                                  )}
+                                </div>
                                 <div style={{ fontSize: 11, color: 'var(--cal-muted)' }}>{user.email}</div>
                               </div>
                             </div>
@@ -1784,6 +1871,154 @@ export default function AdminDashboard() {
               </>
             )
           })()}
+
+          {/* ════════════════ MODULES ════════════════ */}
+          {adminView === 'modules' && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
+                <div>
+                  <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, color: 'var(--cal-ink)', marginBottom: 4 }}>Modules</h2>
+                  <p style={{ fontSize: 13, color: 'var(--cal-muted)' }}>
+                    Preview each module as a learner sees it, edit its content, and add or remove it from {schoolName}.
+                  </p>
+                </div>
+                {isSuperAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => navigate('/superadmin')}
+                    className="btn"
+                    style={{ fontSize: 12, fontWeight: 600, padding: '9px 16px', background: 'var(--cal-teal)', color: '#fff', borderRadius: 'var(--r-full)' }}
+                  >
+                    Open module editor →
+                  </button>
+                )}
+              </div>
+
+              <div style={{
+                background: '#FFF8E1', border: '1px solid #FFE082', color: '#7C5A00',
+                borderRadius: 'var(--r-sm)', padding: '10px 14px', marginBottom: 20,
+                fontSize: 12, lineHeight: 1.55,
+              }}>
+                <strong>Heads up:</strong> Module content is defined in code. Editing prose and structure is a superadmin task in the <em>module editor</em>.
+                Admins can preview, assign, and remove modules for their school here. To request a brand-new module, reach out to the Habterra team.
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
+                {Object.entries(MODULE_META).map(([slug, meta]) => {
+                  const schoolAssignments = assignments.filter(a => a.module_slug === slug)
+                  const isActive = schoolAssignments.length > 0
+                  const hasIndividual = schoolAssignments.some(a => !!a.user_id)
+                  const hasRole = schoolAssignments.some(a => !a.user_id)
+                  return (
+                    <div key={slug} style={{
+                      background: '#fff', borderRadius: 'var(--r-lg)',
+                      border: '1px solid var(--cal-border-lt)', boxShadow: 'var(--shadow-sm)',
+                      padding: 18, display: 'flex', flexDirection: 'column', gap: 12,
+                      opacity: meta.inDev ? 0.75 : 1,
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <span style={{ fontSize: 28 }}>{meta.flag}</span>
+                          <div>
+                            <div style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 700, color: 'var(--cal-ink)' }}>
+                              {meta.label}
+                            </div>
+                            <div style={{ fontSize: 11, color: 'var(--cal-muted)' }}>{meta.lang} · {slug}</div>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+                          {meta.inDev && (
+                            <span style={{
+                              fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
+                              padding: '2px 7px', borderRadius: 'var(--r-full)',
+                              background: '#FFE082', color: '#7C5A00', textTransform: 'uppercase',
+                            }}>In dev</span>
+                          )}
+                          <span style={{
+                            fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
+                            padding: '2px 7px', borderRadius: 'var(--r-full)',
+                            background: isActive ? 'var(--cal-success-lt)' : 'var(--cal-surface)',
+                            color: isActive ? 'var(--cal-success)' : 'var(--cal-muted)',
+                            textTransform: 'uppercase',
+                          }}>
+                            {isActive ? `${schoolAssignments.length} assigned` : 'Not assigned'}
+                          </span>
+                        </div>
+                      </div>
+                      {meta.desc && (
+                        <div style={{ fontSize: 12, color: 'var(--cal-ink-soft)', lineHeight: 1.5 }}>
+                          {meta.desc}
+                        </div>
+                      )}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 'auto' }}>
+                        <button
+                          type="button"
+                          onClick={() => window.open(`/module/${slug}`, '_blank', 'noopener')}
+                          className="btn"
+                          style={{ fontSize: 11, padding: '6px 10px', background: 'var(--cal-teal)', color: '#fff', borderRadius: 'var(--r-sm)' }}
+                          title="Open the learner view for this module in a new tab"
+                        >
+                          Preview
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAssignForm(f => ({ ...f, moduleSlug: slug }))
+                            setAdminView('assign')
+                          }}
+                          className="btn"
+                          style={{ fontSize: 11, padding: '6px 10px', background: 'transparent', color: 'var(--cal-ink)', border: '1px solid var(--cal-border)', borderRadius: 'var(--r-sm)' }}
+                        >
+                          Assign
+                        </button>
+                        {isSuperAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/superadmin?module=${encodeURIComponent(meta.dbId ?? slug)}`)}
+                            className="btn"
+                            style={{ fontSize: 11, padding: '6px 10px', background: 'transparent', color: 'var(--cal-ink)', border: '1px solid var(--cal-border)', borderRadius: 'var(--r-sm)' }}
+                            title="Edit module title, tagline, preamble, and structured content"
+                          >
+                            Edit content
+                          </button>
+                        )}
+                        {isActive && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const count = schoolAssignments.length
+                              const detail = hasIndividual && hasRole
+                                ? 'individual and role-level'
+                                : hasIndividual ? 'individual' : 'role-level'
+                              const ok = window.confirm(
+                                `Remove ${meta.label} from ${schoolName}?\n\n` +
+                                `This deletes ${count} ${detail} assignment${count === 1 ? '' : 's'}. ` +
+                                `Learners keep their existing progress, but the module will no longer appear on their dashboards.`
+                              )
+                              if (!ok) return
+                              try {
+                                for (const a of schoolAssignments) {
+                                  // eslint-disable-next-line no-await-in-loop
+                                  if (!MOCK_MODE) await deleteAssignment(a.id)
+                                }
+                                setAssignments(prev => prev.filter(a => a.module_slug !== slug))
+                              } catch (err) {
+                                window.alert(`Failed to remove: ${err?.message ?? 'unknown error'}`)
+                              }
+                            }}
+                            className="btn"
+                            style={{ fontSize: 11, padding: '6px 10px', background: 'transparent', color: '#C62828', border: '1px solid #F5C2C7', borderRadius: 'var(--r-sm)' }}
+                          >
+                            Remove from school
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          )}
 
           {/* ════════════════ ASSIGN MODULE ════════════════ */}
           {adminView === 'assign' && (
@@ -2369,21 +2604,49 @@ export default function AdminDashboard() {
                 </div>
               </div>
               {!editMode && (
-                <button
-                  type="button"
-                  onClick={openEditMode}
-                  style={{
-                    background: 'rgba(255,255,255,0.18)', color: '#fff',
-                    border: '1px solid rgba(255,255,255,0.3)',
-                    borderRadius: 'var(--r-sm)', padding: '6px 12px',
-                    fontSize: 12, fontFamily: 'var(--font-display)', fontWeight: 600,
-                    cursor: 'pointer', marginRight: 8,
-                  }}
-                >Edit</button>
+                <>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!selectedUser?.email) return
+                      if (resetStatus.status === 'sending') return
+                      setResetStatus({ status: 'sending' })
+                      try {
+                        await adminSendPasswordReset(selectedUser.email)
+                        setResetStatus({ status: 'sent', message: `Reset link sent to ${selectedUser.email}` })
+                      } catch (err) {
+                        setResetStatus({ status: 'error', message: err?.message ?? 'Failed to send reset link.' })
+                      }
+                    }}
+                    disabled={resetStatus.status === 'sending'}
+                    title="Send a password reset email to this member"
+                    style={{
+                      background: 'rgba(255,255,255,0.18)', color: '#fff',
+                      border: '1px solid rgba(255,255,255,0.3)',
+                      borderRadius: 'var(--r-sm)', padding: '6px 12px',
+                      fontSize: 12, fontFamily: 'var(--font-display)', fontWeight: 600,
+                      cursor: resetStatus.status === 'sending' ? 'wait' : 'pointer',
+                      marginRight: 8,
+                    }}
+                  >
+                    {resetStatus.status === 'sending' ? 'Sending…' : 'Send reset link'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openEditMode}
+                    style={{
+                      background: 'rgba(255,255,255,0.18)', color: '#fff',
+                      border: '1px solid rgba(255,255,255,0.3)',
+                      borderRadius: 'var(--r-sm)', padding: '6px 12px',
+                      fontSize: 12, fontFamily: 'var(--font-display)', fontWeight: 600,
+                      cursor: 'pointer', marginRight: 8,
+                    }}
+                  >Edit</button>
+                </>
               )}
               <button
                 type="button"
-                onClick={() => { setEditMode(false); setSelectedUser(null) }}
+                onClick={() => { setEditMode(false); setSelectedUser(null); setResetStatus({ status: 'idle' }) }}
                 aria-label="Close"
                 style={{
                   background: 'transparent', border: 'none', color: '#fff',
@@ -2394,6 +2657,29 @@ export default function AdminDashboard() {
 
             {/* Modal body */}
             <div style={{ padding: '22px 26px' }}>
+
+              {resetStatus.status !== 'idle' && resetStatus.status !== 'sending' && (
+                <div style={{
+                  marginBottom: 14,
+                  padding: '10px 14px',
+                  borderRadius: 'var(--r-sm)',
+                  fontSize: 12,
+                  background: resetStatus.status === 'sent' ? 'var(--cal-success-lt)' : '#FFEBEE',
+                  color: resetStatus.status === 'sent' ? 'var(--cal-success)' : '#C62828',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
+                }}>
+                  <span>
+                    {resetStatus.status === 'sent' ? '\u2713 ' : ''}
+                    {resetStatus.message}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setResetStatus({ status: 'idle' })}
+                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'inherit', fontSize: 14, padding: 0 }}
+                    aria-label="Dismiss"
+                  >\u00d7</button>
+                </div>
+              )}
 
               {editMode && (
                 <div style={{
@@ -2457,7 +2743,7 @@ export default function AdminDashboard() {
                       </select>
                     </div>
 
-                    {isSuperAdmin && (
+                    {(isSuperAdmin || (profile && selectedUser && selectedUser.id === profile.id)) && (
                       <div>
                         <label style={{ display: 'block', fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--cal-ink-soft)', marginBottom: 5 }}>
                           School
@@ -2475,9 +2761,18 @@ export default function AdminDashboard() {
                           {allSchools.map(s => (
                             <option key={s.id} value={s.id}>{s.name}</option>
                           ))}
+                          {/* Fall back to caller's current school so it stays selectable
+                              even when `getAllSchools()` is gated to superadmin. */}
+                          {!isSuperAdmin && selectedUser?.school_id && !allSchools.some(s => s.id === selectedUser.school_id) && (
+                            <option value={selectedUser.school_id}>
+                              {school?.name ?? 'Current school'}
+                            </option>
+                          )}
                         </select>
                         <div style={{ fontSize: 10, color: 'var(--cal-muted)', marginTop: 4 }}>
-                          Superadmin only. Moving a member to another school updates their roster and assignments on next sign-in.
+                          {isSuperAdmin
+                            ? 'Superadmin only. Moving a member to another school updates their roster and assignments on next sign-in.'
+                            : 'Changing your own school updates your roster on next sign-in. Contact a superadmin if the right school isn\u2019t listed.'}
                         </div>
                       </div>
                     )}
@@ -2948,6 +3243,47 @@ export default function AdminDashboard() {
                 </select>
               </div>
 
+              {/* Admin-set initial password (optional). Setting one skips the
+                  invite email — the admin hands the password over out-of-band. */}
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--cal-ink-soft)', marginBottom: 5 }}>
+                  Initial password <span style={{ color: 'var(--cal-muted)', fontWeight: 500 }}>(optional)</span>
+                </label>
+                <input
+                  className="input"
+                  type="text"
+                  autoComplete="new-password"
+                  value={addMemberForm.initialPassword}
+                  onChange={e => setAddMemberForm(f => ({ ...f, initialPassword: e.target.value }))}
+                  placeholder="Leave blank to send an invite email"
+                  style={{ width: '100%' }}
+                />
+                <div style={{ fontSize: 10, color: 'var(--cal-muted)', marginTop: 4, lineHeight: 1.5 }}>
+                  Set a password to create the account silently (no invite email). Min 8 chars.
+                  The user can sign in immediately and change it later from their profile,
+                  or you can trigger a reset link from their detail panel.
+                </div>
+              </div>
+
+              {/* Send-invite toggle. Forced off when an initial password is set. */}
+              <div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--cal-ink)', cursor: addMemberForm.initialPassword ? 'not-allowed' : 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={!addMemberForm.initialPassword && addMemberForm.sendEmail !== false}
+                    onChange={e => setAddMemberForm(f => ({ ...f, sendEmail: e.target.checked }))}
+                    disabled={!!addMemberForm.initialPassword}
+                    style={{ cursor: addMemberForm.initialPassword ? 'not-allowed' : 'pointer' }}
+                  />
+                  <span>Send Supabase invite email</span>
+                </label>
+                <div style={{ fontSize: 10, color: 'var(--cal-muted)', marginTop: 4, marginLeft: 24 }}>
+                  {addMemberForm.initialPassword
+                    ? 'Disabled — silent create (password above) skips the email.'
+                    : 'Uncheck to create the account without emailing the user.'}
+                </div>
+              </div>
+
               <div>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--cal-ink-soft)', marginBottom: 8 }}>
                   Modules to auto-assign <span style={{ color: 'var(--cal-muted)', fontWeight: 500 }}>(optional)</span>
@@ -3008,52 +3344,46 @@ export default function AdminDashboard() {
                   }}
                 />
                 <div style={{ fontSize: 10, color: 'var(--cal-muted)', marginTop: 4 }}>
-                  Held in the form; ignored until the invite edge function surfaces <code>welcome_message</code>.
+                  Passed to the invite edge function as <code>welcome_message</code>; ignored until the backend surfaces it.
                 </div>
               </div>
 
-              <div style={{
-                display: 'flex', alignItems: 'flex-start', gap: 10,
-                padding: 10, borderRadius: 'var(--r-sm)',
-                background: 'var(--cal-surface)',
-                border: '1px solid var(--cal-border-lt)',
-              }}>
-                <input
-                  id="add-member-send-email"
-                  type="checkbox"
-                  checked={addMemberForm.sendEmail !== false}
-                  onChange={e => setAddMemberForm(f => ({ ...f, sendEmail: e.target.checked }))}
-                  style={{ marginTop: 2, cursor: 'pointer' }}
-                />
-                <label htmlFor="add-member-send-email" style={{ fontSize: 12, color: 'var(--cal-ink)', cursor: 'pointer', flex: 1 }}>
-                  <span style={{ fontWeight: 600 }}>Send invite email</span>
-                  <div style={{ fontSize: 10, color: 'var(--cal-muted)', marginTop: 2 }}>
-                    When off, the member is created silently (no email). They’ll appear in the roster immediately; you can share a sign-in link manually later.
-                  </div>
-                </label>
-              </div>
-
               {addMemberError && (
-                <div style={{ background: '#FFEBEE', color: '#C62828', padding: '8px 12px', borderRadius: 'var(--r-sm)', fontSize: 12 }}>
+                <div style={{
+                  padding: '9px 12px',
+                  background: '#FFF4E5',
+                  border: '1px solid #F5C27A',
+                  borderRadius: 'var(--r-sm)',
+                  fontSize: 12,
+                  color: '#8A5A14',
+                }}>
                   {addMemberError}
                 </div>
               )}
 
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 6 }}>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 6 }}>
                 <button
                   type="button"
                   onClick={closeAddMember}
+                  className="btn btn-ghost"
                   disabled={addMemberSaving}
-                  className="btn"
-                  style={{ fontSize: 12, padding: '8px 14px', background: 'transparent', border: '1px solid var(--cal-border)', color: 'var(--cal-ink)' }}
-                >Cancel</button>
+                  style={{ fontSize: 13, padding: '9px 18px' }}
+                >
+                  Cancel
+                </button>
                 <button
                   type="button"
                   onClick={handleAddMember}
-                  disabled={addMemberSaving || !addMemberForm.email.trim() || !addMemberForm.fullName.trim()}
                   className="btn"
-                  style={{ fontSize: 12, padding: '8px 14px', background: 'var(--cal-teal)', color: '#fff' }}
-                >{addMemberSaving ? 'Adding…' : (addMemberForm.sendEmail !== false ? 'Send invite & add' : 'Create silently')}</button>
+                  disabled={addMemberSaving}
+                  style={{
+                    fontSize: 13, padding: '9px 20px',
+                    background: 'var(--cal-teal)', color: '#fff',
+                    opacity: addMemberSaving ? 0.7 : 1,
+                  }}
+                >
+                  {addMemberSaving ? 'Adding…' : 'Add member'}
+                </button>
               </div>
             </div>
           </div>

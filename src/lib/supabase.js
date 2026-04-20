@@ -234,6 +234,31 @@ export async function resetPasswordForEmail(email) {
   if (error) throw error
 }
 
+// Admin helper: trigger a password-reset email for any user (by email).
+// Uses the same standard reset endpoint; the link lands on /login in recovery
+// mode where the user can set a new password.
+export async function adminSendPasswordReset(email) {
+  if (MOCK_MODE) { await wait(150); return { ok: true } }
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}/login?recovery=1`,
+  })
+  if (error) throw error
+  return { ok: true }
+}
+
+// Update the currently signed-in user's password. Used by the recovery flow
+// after clicking the reset-email link, and by users setting/changing their
+// password from their own account page.
+export async function updateMyPassword(newPassword) {
+  if (MOCK_MODE) { await wait(150); return { ok: true } }
+  if (!newPassword || newPassword.length < 8) {
+    throw new Error('Password must be at least 8 characters.')
+  }
+  const { error } = await supabase.auth.updateUser({ password: newPassword })
+  if (error) throw error
+  return { ok: true }
+}
+
 export async function getProfile(userId) {
   const { data, error } = await supabase
     .from('profiles')
@@ -547,7 +572,7 @@ export async function updateInviteBatchCounts(batchId, { imported, failed, statu
   if (error) throw error
 }
 
-export async function inviteUser({ email, fullName, role, schoolId, welcomeMessage, sendEmail = true }) {
+export async function inviteUser({ email, fullName, role, schoolId, welcomeMessage, sendEmail = true, password }) {
   if (MOCK_MODE) {
     await wait(150)
     return { ok: true, user_id: `mock-user-${Date.now()}` }
@@ -565,6 +590,13 @@ export async function inviteUser({ email, fullName, role, schoolId, welcomeMessa
   // invite-user edge function to honor the skip_email flag (see
   // grade_overrides_migration.sql + invite-user/index.ts in /supabase).
   if (sendEmail === false) body.skip_email = true
+  // Optional admin-set initial password — the edge function uses it with
+  // supabase.auth.admin.createUser({ email_confirm: true }) so the user can
+  // sign in immediately. Setting a password implies no invite email.
+  if (password) {
+    body.password    = password
+    body.skip_email  = true
+  }
   const { data, error } = await supabase.functions.invoke('invite-user', {
     body,
   })
@@ -762,4 +794,3 @@ export async function updateDimension(dimensionId, { title, content }) {
     .eq('id', dimensionId)
   if (error) throw error
 }
-
