@@ -22,6 +22,7 @@ import {
   upsertGradeOverride,
   getSchoolMembers,
   updateMemberProfile,
+  setUserActive,
   getAllSchools,
   adminSendPasswordReset,
 } from '../lib/supabase'
@@ -352,6 +353,10 @@ export default function AdminDashboard() {
   const [editForm, setEditForm]   = useState({ fullName: '', role: 'teacher', schoolId: '' })
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError]   = useState('')
+  // Soft-delete state — separate from editSaving so the two buttons don't
+  // block each other and the error message has its own space.
+  const [deactivateSaving, setDeactivateSaving] = useState(false)
+  const [deactivateError,  setDeactivateError]  = useState('')
 
   // "Add new member" modal — invite + optional auto-assign modules with due dates.
   const [addMemberOpen, setAddMemberOpen] = useState(false)
@@ -728,12 +733,14 @@ export default function AdminDashboard() {
       schoolId: selectedUser.school_id ?? profile?.school_id ?? '',
     })
     setEditError('')
+    setDeactivateError('')
     setEditMode(true)
   }
 
   function cancelEditMode() {
     setEditMode(false)
     setEditError('')
+    setDeactivateError('')
   }
 
   async function saveMemberEdit() {
@@ -774,6 +781,40 @@ export default function AdminDashboard() {
       setEditError(err?.message ?? 'Failed to save. Please try again.')
     } finally {
       setEditSaving(false)
+    }
+  }
+
+  // Soft-delete (deactivate) the currently-open user. Drops their assignments
+  // and completions, flips is_active=false, removes them from the members list.
+  // Self-deactivation is blocked — Mark can't accidentally lock himself out.
+  async function handleDeactivateUser() {
+    if (!selectedUser) return
+    if (profile && selectedUser.id === profile.id) {
+      setDeactivateError('You cannot deactivate your own account.')
+      return
+    }
+    const label = selectedUser.full_name || selectedUser.email || 'this user'
+    const ok = window.confirm(
+      `Deactivate ${label}?\n\n` +
+      `They'll be hidden from the members list and won't be able to log in. ` +
+      `All of their open assignments and module progress will be cleared. ` +
+      `A superadmin can reactivate them later from Supabase.\n\n` +
+      `This is the right choice for dummy/test users.`
+    )
+    if (!ok) return
+    setDeactivateSaving(true)
+    setDeactivateError('')
+    try {
+      await setUserActive(selectedUser.id, false, { actingUserId: profile?.id })
+      // Remove from the members list and close the modal.
+      setMembers(prev => prev.filter(u => u.id !== selectedUser.id))
+      setMembersRefreshKey(k => k + 1)
+      setEditMode(false)
+      setSelectedUser(null)
+    } catch (err) {
+      setDeactivateError(err?.message ?? 'Failed to deactivate this user.')
+    } finally {
+      setDeactivateSaving(false)
     }
   }
 
@@ -1914,7 +1955,6 @@ export default function AdminDashboard() {
                       background: '#fff', borderRadius: 'var(--r-lg)',
                       border: '1px solid var(--cal-border-lt)', boxShadow: 'var(--shadow-sm)',
                       padding: 18, display: 'flex', flexDirection: 'column', gap: 12,
-                      opacity: meta.inDev ? 0.75 : 1,
                     }}>
                       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -1927,13 +1967,6 @@ export default function AdminDashboard() {
                           </div>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
-                          {meta.inDev && (
-                            <span style={{
-                              fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
-                              padding: '2px 7px', borderRadius: 'var(--r-full)',
-                              background: '#FFE082', color: '#7C5A00', textTransform: 'uppercase',
-                            }}>In dev</span>
-                          )}
                           <span style={{
                             fontSize: 9, fontWeight: 700, letterSpacing: '0.08em',
                             padding: '2px 7px', borderRadius: 'var(--r-full)',
@@ -2056,26 +2089,12 @@ export default function AdminDashboard() {
                         }}
                       >
                         <option value="">Select a module…</option>
-                        {Object.values(MODULE_META).filter(m => !m.inDev).map(m => (
+                        {Object.values(MODULE_META).map(m => (
                           <option key={m.slug} value={m.slug}>
                             {m.flag} {m.label}
                           </option>
                         ))}
-                        {Object.values(MODULE_META).some(m => m.inDev) && (
-                          <optgroup label="In development (not assignable)">
-                            {Object.values(MODULE_META).filter(m => m.inDev).map(m => (
-                              <option key={m.slug} value={m.slug} disabled>
-                                {m.flag} {m.label} — in development
-                              </option>
-                            ))}
-                          </optgroup>
-                        )}
                       </select>
-                      {Object.values(MODULE_META).some(m => m.inDev) && (
-                        <div style={{ fontSize: 11, color: 'var(--cal-muted)', marginTop: 6, lineHeight: 1.4 }}>
-                          Country modules marked <em>in development</em> are on the roadmap but not yet ready to assign. Only modules with complete content and quiz banks are assignable.
-                        </div>
-                      )}
                     </div>
 
                     <div>
@@ -2799,6 +2818,42 @@ export default function AdminDashboard() {
                         style={{ fontSize: 12, padding: '8px 14px', background: 'var(--cal-teal)', color: '#fff' }}
                       >{editSaving ? 'Saving…' : 'Save changes'}</button>
                     </div>
+
+                    {/* Danger zone — soft-delete. Hidden for self so Mark */}
+                    {/* can't accidentally deactivate his own account.     */}
+                    {profile && selectedUser && selectedUser.id !== profile.id && (
+                      <div style={{
+                        marginTop: 18, padding: 14,
+                        border: '1px solid #F5C2C2', borderRadius: 'var(--r-md)',
+                        background: '#FFF7F7',
+                      }}>
+                        <div style={{
+                          fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 700,
+                          letterSpacing: '0.08em', color: '#8B1F1F', textTransform: 'uppercase',
+                          marginBottom: 6,
+                        }}>Danger zone</div>
+                        <div style={{ fontSize: 12, color: '#6B2323', lineHeight: 1.5, marginBottom: 10 }}>
+                          Deactivating hides this user from the members list, revokes their login, and clears all their assignments and module progress. Use this for test accounts or users who should no longer have access. A superadmin can reactivate them later in Supabase by flipping <code>profiles.is_active</code> back to <code>true</code>.
+                        </div>
+                        {deactivateError && (
+                          <div style={{ background: '#FFEBEE', color: '#C62828', padding: '8px 12px', borderRadius: 'var(--r-sm)', fontSize: 12, marginBottom: 10 }}>
+                            {deactivateError}
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleDeactivateUser}
+                          disabled={deactivateSaving || editSaving}
+                          className="btn"
+                          style={{
+                            fontSize: 12, padding: '8px 14px',
+                            background: '#fff', color: '#C62828',
+                            border: '1.5px solid #C62828',
+                            cursor: deactivateSaving ? 'wait' : 'pointer',
+                          }}
+                        >{deactivateSaving ? 'Deactivating…' : 'Deactivate user'}</button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -2933,7 +2988,7 @@ export default function AdminDashboard() {
                     }}
                   >
                     <option value="">— pick a module —</option>
-                    {Object.entries(MODULE_META).filter(([, m]) => !m.inDev).map(([slug, m]) => {
+                    {Object.entries(MODULE_META).map(([slug, m]) => {
                       const alreadyAssigned = assignments.some(a => a.user_id === selectedUser.id && a.module_slug === slug)
                       return (
                         <option key={slug} value={slug} disabled={alreadyAssigned}>
@@ -3292,7 +3347,7 @@ export default function AdminDashboard() {
                   border: '1px solid var(--cal-border-lt)', borderRadius: 'var(--r-sm)',
                   maxHeight: 200, overflowY: 'auto',
                 }}>
-                  {Object.entries(MODULE_META).filter(([, m]) => !m.inDev).map(([slug, m], i, arr) => {
+                  {Object.entries(MODULE_META).map(([slug, m], i, arr) => {
                     const checked = slug in addMemberForm.selectedModules
                     return (
                       <div key={slug} style={{
@@ -3386,6 +3441,68 @@ export default function AdminDashboard() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--cal-ink-soft)', marginBottom: 5 }}>
+                  Welcome message <span style={{ color: 'var(--cal-muted)', fontWeight: 500 }}>(optional)</span>
+                </label>
+                <textarea
+                  value={addMemberForm.welcomeMessage}
+                  onChange={e => setAddMemberForm(f => ({ ...f, welcomeMessage: e.target.value }))}
+                  placeholder="Short note that goes out with the invite email."
+                  rows={3}
+                  style={{
+                    width: '100%', padding: '9px 12px', fontSize: 13,
+                    border: '1.5px solid var(--cal-border)', borderRadius: 'var(--r-sm)',
+                    fontFamily: 'inherit', resize: 'vertical',
+                  }}
+                />
+                <div style={{ fontSize: 10, color: 'var(--cal-muted)', marginTop: 4 }}>
+                  Passed to the invite edge function; surfaced to the user when the backend supports it.
+                </div>
+              </div>
+
+              {addMemberError && (
+                <div style={{
+                  padding: '9px 12px',
+                  background: '#FFF4E5',
+                  border: '1px solid #F5C27A',
+                  borderRadius: 'var(--r-sm)',
+                  fontSize: 12,
+                  color: '#8A5A14',
+                }}>
+                  {addMemberError}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+                <button
+                  type="button"
+                  onClick={closeAddMember}
+                  disabled={addMemberSaving}
+                  className="btn"
+                  style={{ fontSize: 12, padding: '9px 16px', background: 'transparent', border: '1px solid var(--cal-border)', color: 'var(--cal-ink)' }}
+                >Cancel</button>
+                <button
+                  type="button"
+                  onClick={handleAddMember}
+                  disabled={addMemberSaving || !addMemberForm.email.trim() || !addMemberForm.fullName.trim()}
+                  className="btn"
+                  style={{ fontSize: 12, padding: '9px 16px', background: 'var(--cal-teal)', color: '#fff' }}
+                >{addMemberSaving ? 'Adding…' : 'Add member'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  )
+}
           </div>
         </div>
       )}

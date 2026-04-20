@@ -2,14 +2,14 @@ import { useNavigate } from 'react-router-dom'
 
 const MODULE_META = {
   'india-ib':             { flag: 'IN', label: 'Understand India',                   lang: 'EN / HI',      desc: 'CBSE, board exams, and percentage culture - what IB looks like from a family inside that world.' },
-  'korea-ib':             { flag: 'KR', label: 'Understand Korea',                   lang: 'EN / KO',      desc: 'Suneung pressure, class rankings, and what a Korean parent expects from a teacher relationship.', inDev: true },
-  'ksa-ib':               { flag: 'SA', label: 'Understand Saudi Arabia',            lang: 'EN / AR',      desc: 'Tawjihiyya, family expectations, and navigating IB in a Gulf context.', inDev: true },
-  'china-ib':             { flag: 'CN', label: 'Understand China',                   lang: 'EN / ZH',      desc: 'Gaokao culture, collective family ambition, and what "no ranking" means to a Chinese parent.', inDev: true },
-  'vietnam-ib':           { flag: 'VN', label: 'Understand Vietnam',                 lang: 'EN / VI',      desc: "THPTQG culture and the Vietnamese parent's relationship with academic achievement.", inDev: true },
-  'japan-ib':             { flag: 'JP', label: 'Understand Japan',                   lang: 'EN / JA',      desc: 'Gakureki society, juku culture, and the Japanese parent inside an international curriculum.', inDev: true },
+  'korea-ib':             { flag: 'KR', label: 'Understand Korea',                   lang: 'EN / KO',      desc: 'Suneung pressure, class rankings, and what a Korean parent expects from a teacher relationship.' },
+  'ksa-ib':               { flag: 'SA', label: 'Understand Saudi Arabia',            lang: 'EN / AR',      desc: 'Tawjihiyya, family expectations, and navigating IB in a Gulf context.' },
+  'china-ib':             { flag: 'CN', label: 'Understand China',                   lang: 'EN / ZH',      desc: 'Gaokao culture, collective family ambition, and what "no ranking" means to a Chinese parent.' },
+  'vietnam-ib':           { flag: 'VN', label: 'Understand Vietnam',                 lang: 'EN / VI',      desc: "THPTQG culture and the Vietnamese parent's relationship with academic achievement." },
+  'japan-ib':             { flag: 'JP', label: 'Understand Japan',                   lang: 'EN / JA',      desc: 'Gakureki society, juku culture, and the Japanese parent inside an international curriculum.' },
   'woodstock-transition': { flag: 'WS', label: 'Woodstock Curriculum Transition',    lang: 'EN',           desc: 'IGCSE, AP, and WSD - what the transition means for every cohort, and how to talk about it.', isParent: true },
-  'indonesia-ib':         { flag: 'ID', label: 'Understand Indonesia',               lang: 'EN / ID',      desc: "UTBK pressure, face dynamics, and the faith dimension in one of the world's most diverse school communities.", inDev: true },
-  'uae-ib':               { flag: 'AE', label: 'Understand UAE',                     lang: 'EN / AR',      desc: 'Wasta, school choice as social capital, and the Emirati family inside a global curriculum.', inDev: true },
+  'indonesia-ib':         { flag: 'ID', label: 'Understand Indonesia',               lang: 'EN / ID',      desc: "UTBK pressure, face dynamics, and the faith dimension in one of the world's most diverse school communities." },
+  'uae-ib':               { flag: 'AE', label: 'Understand UAE',                     lang: 'EN / AR',      desc: 'Wasta, school choice as social capital, and the Emirati family inside a global curriculum.' },
 }
 
 export default function ModuleCard({ assignment, completion, onRemove = null }) {

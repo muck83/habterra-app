@@ -359,18 +359,33 @@ export async function getSchoolAssignments(schoolId) {
 // ---------- Admin: members / schools ----------
 
 // Return every profile belonging to a school (admin-only via RLS).
+// Hides soft-deleted (is_active = false) users. Falls back gracefully
+// if the is_active column hasn't been added yet (pre-migration DB).
 export async function getSchoolMembers(schoolId) {
   if (MOCK_MODE) return []
+  // Try the post-migration query first.
+  const withFlag = await supabase
+    .from('profiles')
+    .select('id, email, full_name, role, school_id, is_active')
+    .eq('school_id', schoolId)
+    .order('full_name', { ascending: true, nullsFirst: false })
+  if (!withFlag.error) {
+    return (withFlag.data ?? [])
+      .filter(row => row.is_active !== false)
+      .map(row => ({ ...row, completions: {} }))
+  }
+  // Fall back to the pre-migration shape when the column doesn't exist.
+  const isMissingColumn =
+    /column .*is_active.* does not exist/i.test(withFlag.error.message) ||
+    withFlag.error.code === '42703'
+  if (!isMissingColumn) throw withFlag.error
   const { data, error } = await supabase
     .from('profiles')
     .select('id, email, full_name, role, school_id')
     .eq('school_id', schoolId)
     .order('full_name', { ascending: true, nullsFirst: false })
   if (error) throw error
-  return (data ?? []).map(row => ({
-    ...row,
-    completions: {},
-  }))
+  return (data ?? []).map(row => ({ ...row, completions: {} }))
 }
 
 // Update a member's editable profile fields. Callers should pass only
@@ -387,6 +402,51 @@ export async function updateMemberProfile({ userId, fullName, role, schoolId }) 
     .update(payload)
     .eq('id', userId)
   if (error) throw error
+}
+
+// Soft-delete (deactivate) a member. Sets is_active=false, drops their
+// open assignments and module completions so they don't skew school
+// progress. Auth row is preserved — a superadmin can reactivate later
+// by setting is_active=true. Requires the deactivate_user_migration SQL
+// to have been applied in Supabase; otherwise this function throws
+// with a clear "run the migration" message.
+export async function setUserActive(userId, isActive, { actingUserId } = {}) {
+  if (MOCK_MODE) { await wait(100); return }
+  if (!userId) throw new Error('userId is required')
+  const payload = { is_active: !!isActive }
+  if (!isActive) {
+    payload.deactivated_at = new Date().toISOString()
+    if (actingUserId) payload.deactivated_by = actingUserId
+  } else {
+    payload.deactivated_at = null
+    payload.deactivated_by = null
+  }
+  const { error } = await supabase
+    .from('profiles')
+    .update(payload)
+    .eq('id', userId)
+  if (error) {
+    const missing =
+      /column .*(is_active|deactivated_at|deactivated_by).* does not exist/i.test(error.message) ||
+      error.code === '42703'
+    if (missing) {
+      throw new Error(
+        'Deactivation columns are missing on the profiles table. Run calibrate/supabase/deactivate_user_migration.sql in the Supabase SQL editor, then try again.'
+      )
+    }
+    throw error
+  }
+  // On deactivation, clear their assignments + completions so school
+  // rollups stop counting them. We swallow errors here because the
+  // profile flip is the source of truth; the scrub is cleanup.
+  if (!isActive) {
+    try {
+      await supabase.from('assignments').delete().eq('user_id', userId)
+      await supabase.from('module_completions').delete().eq('user_id', userId)
+    } catch {
+      // non-fatal — the deactivation itself succeeded.
+    }
+  }
 }
 
 // Every school in the system. Only used by superadmin UIs; RLS on the
@@ -712,6 +772,89 @@ export async function getAdminActionItems(schoolId) {
 }
 
 export async function refreshAdminActionItems(schoolId) {
+  if (MOCK_MODE) { await wait(150); return { ok: true } }
+  const { error } = await supabase.rpc('refresh_admin_action_items', { target_school: schoolId })
+  if (error) throw error
+  return { ok: true }
+}
+
+export async function resolveAdminActionItem(itemId, { resolvedBy, note }) {
+  if (MOCK_MODE) { await wait(80); return }
+  const { error } = await supabase
+    .from('admin_action_items')
+    .update({
+      status: 'resolved',
+      resolved_at: new Date().toISOString(),
+      resolved_by: resolvedBy ?? null,
+      resolution_note: note ?? null,
+    })
+    .eq('id', itemId)
+  if (error) throw error
+}
+
+// ---------- SuperAdmin: module editor ----------
+
+export async function getAllModules() {
+  if (MOCK_MODE) {
+    await wait(100)
+    return Object.values(MOCK_PD_MODULES)
+  }
+  const { data, error } = await supabase
+    .from('pd_modules')
+    .select('id, country_code, title, tagline, preamble_md, status')
+    .order('title')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function updateModuleStatus(moduleId, status) {
+  if (MOCK_MODE) { await wait(80); return }
+  const { error } = await supabase
+    .from('pd_modules')
+    .update({ status })
+    .eq('id', moduleId)
+  if (error) throw error
+}
+
+// Update the prose fields on pd_modules (title, tagline, preamble_md).
+// Only fields present in the patch are sent — callers can pass any subset.
+export async function updateModule(moduleId, patch) {
+  if (MOCK_MODE) { await wait(80); return }
+  const payload = {}
+  if (patch.title       !== undefined) payload.title       = patch.title
+  if (patch.tagline     !== undefined) payload.tagline     = patch.tagline
+  if (patch.preamble_md !== undefined) payload.preamble_md = patch.preamble_md
+  if (Object.keys(payload).length === 0) return
+  const { error } = await supabase
+    .from('pd_modules')
+    .update(payload)
+    .eq('id', moduleId)
+  if (error) throw error
+}
+
+export async function getAllDimensions(moduleId) {
+  if (MOCK_MODE) return mockDimensionsForModuleView(moduleId)
+  const { data, error } = await supabase
+    .from('pd_dimensions')
+    .select('id, module_id, dimension_number, title, content, research_status')
+    .eq('module_id', moduleId)
+    .order('dimension_number')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function updateDimension(dimensionId, { title, content }) {
+  if (MOCK_MODE) { await wait(80); return }
+  const { error } = await supabase
+    .from('pd_dimensions')
+    .update({
+      title: title ?? undefined,
+      content: content ?? undefined,
+    })
+    .eq('id', dimensionId)
+  if (error) throw error
+}
+{
   if (MOCK_MODE) { await wait(150); return { ok: true } }
   const { error } = await supabase.rpc('refresh_admin_action_items', { target_school: schoolId })
   if (error) throw error
