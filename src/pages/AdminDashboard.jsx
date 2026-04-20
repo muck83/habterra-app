@@ -8,12 +8,18 @@ import {
   createInviteBatchRows,
   deleteAssignment,
   getAdminActionItems,
+  getCompletions,
+  getGradeOverrides,
   getModuleQuizAnalytics,
   getModuleQuizQuestions,
+  getUserModuleScores,
   inviteUser,
   refreshAdminActionItems,
   resolveAdminActionItem,
+  updateAssignment,
   updateInviteBatchCounts,
+  upsertCompletion,
+  upsertGradeOverride,
   getSchoolMembers,
   updateMemberProfile,
   getAllSchools,
@@ -355,6 +361,34 @@ export default function AdminDashboard() {
   const [addMemberSaving, setAddMemberSaving] = useState(false)
   const [addMemberError, setAddMemberError]   = useState('')
 
+  // Per-user edit state: fetched when the detail modal opens.
+  // completions: { slug: pct }; scores: { slug: { quiz_type: pct } };
+  // overrides: [{ module_slug, quiz_type, override_score, reason, created_at }]
+  const [userCompletions, setUserCompletions] = useState({})
+  const [userScores,      setUserScores]      = useState({})
+  const [userOverrides,   setUserOverrides]   = useState([])
+  const [userDetailLoading, setUserDetailLoading] = useState(false)
+  const [userDetailRefreshKey, setUserDetailRefreshKey] = useState(0)
+
+  // Inline edit state for a single individual assignment due date.
+  const [dueDateEditing, setDueDateEditing] = useState({}) // { [assignmentId]: 'yyyy-mm-dd' }
+  const [dueDateSaving,  setDueDateSaving]  = useState(null)
+
+  // 'Add module' picker inside the user modal.
+  const [addModuleForm, setAddModuleForm] = useState({ slug: '', dueDate: '' })
+  const [addModuleSaving, setAddModuleSaving] = useState(false)
+  const [addModuleError,  setAddModuleError]  = useState('')
+
+  // Per-module progress override input.
+  const [progressEdit,    setProgressEdit]   = useState({}) // { slug: pct }
+  const [progressSaving,  setProgressSaving] = useState(null)
+
+  // Grade override inline form: null when closed.
+  const [gradeOverrideForm, setGradeOverrideForm] = useState(null)
+  // { slug, quizType, score: '', reason: '' }
+  const [gradeOverrideSaving, setGradeOverrideSaving] = useState(false)
+  const [gradeOverrideError,  setGradeOverrideError]  = useState('')
+
   // First-run "what Habterra is (and isn't)" explainer. Dismissal persists per-admin in localStorage.
   const primerKey = `calibrate.adminPrimerDismissed.${user?.id ?? 'anon'}`
   const [primerDismissed, setPrimerDismissed] = useState(() => {
@@ -470,6 +504,60 @@ export default function AdminDashboard() {
       })
     return () => { active = false }
   }, [profile?.school_id, membersRefreshKey])
+
+  // When the detail modal opens (selectedUser set), pull real completions,
+  // quiz scores, and any prior grade overrides. MOCK mode short-circuits.
+  useEffect(() => {
+    if (!selectedUser) {
+      setUserCompletions({})
+      setUserScores({})
+      setUserOverrides([])
+      setProgressEdit({})
+      setGradeOverrideForm(null)
+      setAddModuleForm({ slug: '', dueDate: '' })
+      setAddModuleError('')
+      setDueDateEditing({})
+      return
+    }
+    if (MOCK_MODE) {
+      setUserCompletions({})
+      setUserScores({})
+      setUserOverrides([])
+      return
+    }
+    let cancelled = false
+    setUserDetailLoading(true)
+    ;(async () => {
+      try {
+        const [comp, scores, overrides] = await Promise.all([
+          getCompletions(selectedUser.id),
+          getUserModuleScores(selectedUser.id),
+          getGradeOverrides(selectedUser.id),
+        ])
+        if (cancelled) return
+        const completionsMap = {}
+        for (const row of comp ?? []) completionsMap[row.module_slug] = row.progress_pct ?? 0
+        // scores are per-module-id; invert via MODULE_META's dbId.
+        const moduleIdToSlug = {}
+        for (const [slug, m] of Object.entries(MODULE_META)) if (m.dbId) moduleIdToSlug[m.dbId] = slug
+        const scoreMap = {}
+        for (const row of scores ?? []) {
+          const slug = moduleIdToSlug[row.module_id]
+          if (!slug) continue
+          if (!scoreMap[slug]) scoreMap[slug] = {}
+          scoreMap[slug][row.quiz_type] = { pct: row.pct, correct: row.correct, total: row.total }
+        }
+        setUserCompletions(completionsMap)
+        setUserScores(scoreMap)
+        setUserOverrides(overrides ?? [])
+      } catch (err) {
+        console.warn('[user-detail fetch] failed:', err)
+      } finally {
+        if (!cancelled) setUserDetailLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [selectedUser?.id, userDetailRefreshKey])
 
   // Superadmins get the school list so they can move a member between schools.
   useEffect(() => {
@@ -772,6 +860,157 @@ export default function AdminDashboard() {
       setAddMemberError(err?.message ?? 'Failed to add member. Please try again.')
     } finally {
       setAddMemberSaving(false)
+    }
+  }
+
+  // ---------- User detail modal: edit handlers ----------
+
+  async function handleSaveDueDate(assignment) {
+    const newDate = dueDateEditing[assignment.id]
+    if (newDate === undefined) return
+    const dueDate = newDate || null
+    setDueDateSaving(assignment.id)
+    try {
+      if (!MOCK_MODE) await updateAssignment(assignment.id, { dueDate })
+      setAssignments(prev => prev.map(a => a.id === assignment.id ? { ...a, due_date: dueDate } : a))
+      setDueDateEditing(prev => {
+        const next = { ...prev }
+        delete next[assignment.id]
+        return next
+      })
+    } catch (err) {
+      window.alert(err?.message ?? 'Failed to update due date.')
+    } finally {
+      setDueDateSaving(null)
+    }
+  }
+
+  async function handleAddModuleToUser() {
+    if (!selectedUser || !addModuleForm.slug) return
+    const schoolId = profile?.school_id ?? MOCK_SCHOOL.id
+    const dueDate = addModuleForm.dueDate || null
+    setAddModuleError('')
+    setAddModuleSaving(true)
+    try {
+      let newRow
+      if (!MOCK_MODE) {
+        const created = await createAssignment({
+          schoolId,
+          userId: selectedUser.id,
+          roleTarget: selectedUser.role,
+          moduleSlug: addModuleForm.slug,
+          assignedBy: user?.id,
+          dueDate,
+        })
+        // createAssignment returns {id, ...} — build a local row.
+        newRow = {
+          id: created?.id ?? `tmp-${Date.now()}`,
+          school_id: schoolId,
+          user_id:   selectedUser.id,
+          module_slug: addModuleForm.slug,
+          role_target: selectedUser.role,
+          due_date:    dueDate,
+          assigned_at: new Date().toISOString(),
+        }
+      } else {
+        newRow = {
+          id: `a${Date.now()}`,
+          school_id: schoolId,
+          user_id:   selectedUser.id,
+          module_slug: addModuleForm.slug,
+          role_target: selectedUser.role,
+          due_date:    dueDate,
+          assigned_at: new Date().toISOString(),
+        }
+      }
+      setAssignments(prev => [...prev, newRow])
+      setAddModuleForm({ slug: '', dueDate: '' })
+    } catch (err) {
+      setAddModuleError(err?.message ?? 'Failed to add module.')
+    } finally {
+      setAddModuleSaving(false)
+    }
+  }
+
+  async function handleSaveProgress(slug) {
+    if (!selectedUser) return
+    const raw = progressEdit[slug]
+    if (raw === undefined) return
+    const pct = Math.max(0, Math.min(100, Number(raw) || 0))
+    setProgressSaving(slug)
+    try {
+      if (!MOCK_MODE) await upsertCompletion(selectedUser.id, slug, pct)
+      setUserCompletions(prev => ({ ...prev, [slug]: pct }))
+      setProgressEdit(prev => {
+        const next = { ...prev }
+        delete next[slug]
+        return next
+      })
+    } catch (err) {
+      window.alert(err?.message ?? 'Failed to save progress.')
+    } finally {
+      setProgressSaving(null)
+    }
+  }
+
+  function openGradeOverride(slug, quizType, currentScore) {
+    setGradeOverrideForm({
+      slug,
+      quizType,
+      score: currentScore != null ? String(currentScore) : '',
+      reason: '',
+    })
+    setGradeOverrideError('')
+  }
+
+  function closeGradeOverride() {
+    setGradeOverrideForm(null)
+    setGradeOverrideError('')
+  }
+
+  async function handleSaveGradeOverride() {
+    if (!selectedUser || !gradeOverrideForm) return
+    const score = Number(gradeOverrideForm.score)
+    if (!Number.isFinite(score) || score < 0 || score > 100) {
+      setGradeOverrideError('Score must be a number between 0 and 100.')
+      return
+    }
+    setGradeOverrideSaving(true)
+    setGradeOverrideError('')
+    try {
+      if (!MOCK_MODE) {
+        await upsertGradeOverride({
+          userId: selectedUser.id,
+          moduleSlug: gradeOverrideForm.slug,
+          quizType: gradeOverrideForm.quizType,
+          overrideScore: score,
+          reason: gradeOverrideForm.reason.trim() || null,
+          adminId: user?.id,
+        })
+      }
+      // Optimistic: refresh just this user's overrides list.
+      setUserOverrides(prev => {
+        const without = prev.filter(o => !(o.module_slug === gradeOverrideForm.slug && o.quiz_type === gradeOverrideForm.quizType))
+        return [
+          {
+            id: `opt-${Date.now()}`,
+            user_id: selectedUser.id,
+            module_slug: gradeOverrideForm.slug,
+            quiz_type: gradeOverrideForm.quizType,
+            override_score: score,
+            reason: gradeOverrideForm.reason.trim() || null,
+            created_by: user?.id ?? null,
+            created_at: new Date().toISOString(),
+          },
+          ...without,
+        ]
+      })
+      setGradeOverrideForm(null)
+      setUserDetailRefreshKey(k => k + 1)
+    } catch (err) {
+      setGradeOverrideError(err?.message ?? 'Failed to save override. Check that the grade_overrides table exists.')
+    } finally {
+      setGradeOverrideSaving(false)
     }
   }
 
@@ -2296,8 +2535,22 @@ export default function AdminDashboard() {
                             <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--cal-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                               {meta?.label ?? a.module_slug}
                             </div>
-                            <div style={{ fontSize: 10, color: 'var(--cal-muted)' }}>
-                              Individual{a.due_date && ` · Due ${fmtDate(a.due_date)}`}
+                            <div style={{ fontSize: 10, color: 'var(--cal-muted)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <span>Individual ·</span>
+                              <input
+                                type="date"
+                                value={dueDateEditing[a.id] !== undefined ? dueDateEditing[a.id] : (a.due_date ?? '')}
+                                onChange={e => setDueDateEditing(prev => ({ ...prev, [a.id]: e.target.value }))}
+                                style={{ fontSize: 10, padding: '2px 4px', border: '1px solid var(--cal-border-lt)', borderRadius: 3 }}
+                              />
+                              {dueDateEditing[a.id] !== undefined && dueDateEditing[a.id] !== (a.due_date ?? '') && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveDueDate(a)}
+                                  disabled={dueDateSaving === a.id}
+                                  style={{ fontSize: 10, padding: '2px 8px', background: 'var(--cal-teal)', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer' }}
+                                >{dueDateSaving === a.id ? '…' : 'Save'}</button>
+                              )}
                             </div>
                           </div>
                           <button
@@ -2363,6 +2616,54 @@ export default function AdminDashboard() {
                 )
               })()}
 
+              {/* Add module assignment */}
+              <div style={{
+                background: 'var(--cal-surface)', borderRadius: 'var(--r-md)',
+                padding: 12, marginBottom: 22,
+                border: '1px dashed var(--cal-border-lt)',
+              }}>
+                <div className="label-caps" style={{ marginBottom: 8 }}>Add module to this user</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                  <select
+                    value={addModuleForm.slug}
+                    onChange={e => setAddModuleForm(f => ({ ...f, slug: e.target.value }))}
+                    style={{
+                      flex: 1, minWidth: 180,
+                      padding: '7px 10px', fontSize: 12,
+                      border: '1.5px solid var(--cal-border)', borderRadius: 'var(--r-sm)',
+                      background: '#fff', cursor: 'pointer',
+                    }}
+                  >
+                    <option value="">— pick a module —</option>
+                    {Object.entries(MODULE_META).filter(([, m]) => !m.inDev).map(([slug, m]) => {
+                      const alreadyAssigned = assignments.some(a => a.user_id === selectedUser.id && a.module_slug === slug)
+                      return (
+                        <option key={slug} value={slug} disabled={alreadyAssigned}>
+                          {m.flag} {m.label?.replace('Understand ', '') ?? slug}{alreadyAssigned ? ' (already assigned)' : ''}
+                        </option>
+                      )
+                    })}
+                  </select>
+                  <input
+                    type="date"
+                    value={addModuleForm.dueDate}
+                    onChange={e => setAddModuleForm(f => ({ ...f, dueDate: e.target.value }))}
+                    title="Due date (optional)"
+                    style={{ fontSize: 12, padding: '6px 8px', border: '1.5px solid var(--cal-border)', borderRadius: 'var(--r-sm)' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddModuleToUser}
+                    disabled={!addModuleForm.slug || addModuleSaving}
+                    className="btn"
+                    style={{ fontSize: 12, padding: '7px 14px', background: 'var(--cal-teal)', color: '#fff' }}
+                  >{addModuleSaving ? 'Adding…' : 'Add'}</button>
+                </div>
+                {addModuleError && (
+                  <div style={{ marginTop: 8, fontSize: 11, color: '#C62828' }}>{addModuleError}</div>
+                )}
+              </div>
+
               {/* Module progress */}
               <div className="label-caps" style={{ marginBottom: 12 }}>Module progress</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
@@ -2382,26 +2683,161 @@ export default function AdminDashboard() {
                   }
                   return slugs.map(slug => {
                     const meta = MODULE_META[slug]
-                    const pct = Math.floor(Math.random() * 100) // TODO: wire real progress
+                    const realPct = Math.max(0, Math.min(100, Math.round(userCompletions[slug] ?? 0)))
+                    const editing = progressEdit[slug] !== undefined
+                    const displayPct = editing ? Math.max(0, Math.min(100, Number(progressEdit[slug]) || 0)) : realPct
                     return (
-                      <div key={slug} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div key={slug} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                         <span style={{
                           fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 700,
                           letterSpacing: '0.06em', color: 'var(--cal-teal)',
                           background: 'var(--cal-surface)', padding: '3px 7px',
                           borderRadius: 'var(--r-sm)', border: '1px solid var(--cal-border)',
                         }}>{meta?.flag ?? slug}</span>
-                        <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ flex: 1, minWidth: 120 }}>
                           <div style={{ fontSize: 13, color: 'var(--cal-ink)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {meta?.label ?? slug}
                           </div>
                           <div className="progress-track" style={{ height: 4 }}>
-                            <div className={`progress-fill ${cellStatus(pct) === 'done' ? 'green' : cellStatus(pct) === 'progress' ? 'amber' : ''}`} style={{ width: `${pct}%` }} />
+                            <div className={`progress-fill ${cellStatus(displayPct) === 'done' ? 'green' : cellStatus(displayPct) === 'progress' ? 'amber' : ''}`} style={{ width: `${displayPct}%` }} />
                           </div>
                         </div>
-                        <span style={{ fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 600, color: 'var(--cal-muted)', minWidth: 40, textAlign: 'right' }}>
-                          {pct}%
-                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={editing ? progressEdit[slug] : realPct}
+                          onChange={e => setProgressEdit(prev => ({ ...prev, [slug]: e.target.value }))}
+                          style={{
+                            width: 60, fontSize: 12, padding: '4px 6px',
+                            border: '1px solid var(--cal-border)', borderRadius: 'var(--r-sm)',
+                            textAlign: 'right',
+                          }}
+                          title="Override progress %"
+                        />
+                        <span style={{ fontSize: 11, color: 'var(--cal-muted)' }}>%</span>
+                        {editing && Number(progressEdit[slug]) !== realPct && (
+                          <button
+                            type="button"
+                            onClick={() => handleSaveProgress(slug)}
+                            disabled={progressSaving === slug}
+                            style={{ fontSize: 11, padding: '3px 10px', background: 'var(--cal-teal)', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer' }}
+                          >{progressSaving === slug ? '…' : 'Save'}</button>
+                        )}
+                      </div>
+                    )
+                  })
+                })()}
+              </div>
+
+              {/* Grades (quiz + final exam) */}
+              <div className="label-caps" style={{ marginBottom: 12 }}>Grades</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+                {(() => {
+                  const userAssignmentSlugs = new Set(
+                    assignments
+                      .filter(a => a.user_id === selectedUser.id || (!a.user_id && (a.role_target === 'all' || a.role_target === selectedUser.role)))
+                      .map(a => a.module_slug)
+                  )
+                  const slugs = Array.from(userAssignmentSlugs)
+                  if (slugs.length === 0) {
+                    return (
+                      <div style={{ fontSize: 12, color: 'var(--cal-muted)', fontStyle: 'italic' }}>
+                        No modules assigned yet.
+                      </div>
+                    )
+                  }
+                  const QUIZ_TYPES = [
+                    { key: 'checkpoint', label: 'Checkpoints' },
+                    { key: 'final_exam', label: 'Final exam' },
+                  ]
+                  return slugs.map(slug => {
+                    const meta = MODULE_META[slug]
+                    const scoreByType = userScores[slug] ?? {}
+                    return (
+                      <div key={slug} style={{
+                        padding: '10px 12px', borderRadius: 'var(--r-md)',
+                        background: 'var(--cal-surface)',
+                        border: '1px solid var(--cal-border-lt)',
+                      }}>
+                        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--cal-ink)', marginBottom: 6 }}>
+                          {meta?.flag ?? '🌏'} {meta?.label ?? slug}
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {QUIZ_TYPES.map(qt => {
+                            const baseScore = scoreByType[qt.key]
+                            const override = userOverrides.find(o => o.module_slug === slug && o.quiz_type === qt.key)
+                            const hasData = baseScore || override
+                            return (
+                              <div key={qt.key} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 11 }}>
+                                <span style={{ minWidth: 90, color: 'var(--cal-muted)' }}>{qt.label}</span>
+                                {hasData ? (
+                                  <>
+                                    {override ? (
+                                      <span style={{ fontWeight: 600, color: 'var(--cal-ink)' }}>
+                                        {override.override_score}%
+                                        <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 500, color: '#8e5400', background: '#FFF3E0', padding: '1px 5px', borderRadius: 3 }}>OVERRIDE</span>
+                                        {baseScore && (
+                                          <span style={{ marginLeft: 6, color: 'var(--cal-muted)', textDecoration: 'line-through' }}>{baseScore.pct}%</span>
+                                        )}
+                                      </span>
+                                    ) : (
+                                      <span style={{ fontWeight: 600, color: 'var(--cal-ink)' }}>
+                                        {baseScore.pct}% <span style={{ fontWeight: 400, color: 'var(--cal-muted)' }}>({baseScore.correct}/{baseScore.total})</span>
+                                      </span>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span style={{ color: 'var(--cal-muted)', fontStyle: 'italic' }}>—</span>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => openGradeOverride(slug, qt.key, override?.override_score ?? baseScore?.pct)}
+                                  style={{ marginLeft: 'auto', fontSize: 10, padding: '2px 8px', background: 'transparent', border: '1px solid var(--cal-border)', borderRadius: 3, color: 'var(--cal-ink)', cursor: 'pointer' }}
+                                >{override ? 'Change' : 'Override'}</button>
+                              </div>
+                            )
+                          })}
+                          {gradeOverrideForm && gradeOverrideForm.slug === slug && (
+                            <div style={{
+                              marginTop: 8, padding: 10,
+                              background: '#fff', borderRadius: 'var(--r-sm)',
+                              border: '1.5px solid var(--cal-teal)',
+                              display: 'flex', flexDirection: 'column', gap: 6,
+                            }}>
+                              <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--cal-ink-soft)', fontFamily: 'var(--font-display)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                                Override {gradeOverrideForm.quizType === 'final_exam' ? 'final exam' : 'checkpoints'}
+                              </div>
+                              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                <input
+                                  type="number" min={0} max={100}
+                                  value={gradeOverrideForm.score}
+                                  onChange={e => setGradeOverrideForm(f => ({ ...f, score: e.target.value }))}
+                                  placeholder="Score"
+                                  style={{ width: 80, fontSize: 12, padding: '5px 8px', border: '1px solid var(--cal-border)', borderRadius: 3 }}
+                                />
+                                <span style={{ fontSize: 11, color: 'var(--cal-muted)' }}>%</span>
+                              </div>
+                              <textarea
+                                value={gradeOverrideForm.reason}
+                                onChange={e => setGradeOverrideForm(f => ({ ...f, reason: e.target.value }))}
+                                placeholder="Reason for override (required for audit)"
+                                rows={2}
+                                style={{ fontSize: 11, padding: '5px 8px', border: '1px solid var(--cal-border)', borderRadius: 3, fontFamily: 'inherit', resize: 'vertical' }}
+                              />
+                              {gradeOverrideError && (
+                                <div style={{ fontSize: 10, color: '#C62828' }}>{gradeOverrideError}</div>
+                              )}
+                              <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                                <button type="button" onClick={closeGradeOverride} disabled={gradeOverrideSaving}
+                                  style={{ fontSize: 11, padding: '4px 10px', background: 'transparent', border: '1px solid var(--cal-border)', borderRadius: 3, cursor: 'pointer' }}>Cancel</button>
+                                <button type="button" onClick={handleSaveGradeOverride} disabled={gradeOverrideSaving || !gradeOverrideForm.score}
+                                  style={{ fontSize: 11, padding: '4px 10px', background: 'var(--cal-teal)', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer' }}>
+                                  {gradeOverrideSaving ? 'Saving…' : 'Save override'}</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )
                   })

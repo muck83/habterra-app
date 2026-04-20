@@ -565,6 +565,82 @@ export async function inviteUser({ email, fullName, role, schoolId, welcomeMessa
   return data
 }
 
+// ---------- Admin: edit-user helpers (modules / progress / grades) ----------
+
+// Change the due date on an existing individual assignment row.
+export async function updateAssignment(assignmentId, { dueDate }) {
+  if (MOCK_MODE) { await wait(100); return }
+  const { error } = await supabase
+    .from('assignments')
+    .update({ due_date: dueDate ?? null })
+    .eq('id', assignmentId)
+  if (error) throw error
+}
+
+// Aggregate a user's quiz_responses into per-module, per-quiz-type scores.
+// Returns: [{ module_id, quiz_type, correct, total, pct }]
+export async function getUserModuleScores(userId) {
+  if (MOCK_MODE) return []
+  const { data, error } = await supabase
+    .from('quiz_responses')
+    .select('module_id, quiz_type, is_correct')
+    .eq('user_id', userId)
+  if (error) throw error
+  const bucket = new Map()
+  for (const row of data ?? []) {
+    const key = `${row.module_id}::${row.quiz_type}`
+    if (!bucket.has(key)) bucket.set(key, { module_id: row.module_id, quiz_type: row.quiz_type, correct: 0, total: 0 })
+    const b = bucket.get(key)
+    b.total += 1
+    if (row.is_correct) b.correct += 1
+  }
+  return Array.from(bucket.values()).map(b => ({
+    ...b,
+    pct: b.total > 0 ? Math.round((b.correct / b.total) * 100) : 0,
+  }))
+}
+
+// Read any grade overrides the admin has set for this user.
+// If the grade_overrides table doesn't exist yet, returns [] so the UI
+// stays functional until the migration runs.
+export async function getGradeOverrides(userId) {
+  if (MOCK_MODE) return []
+  const { data, error } = await supabase
+    .from('grade_overrides')
+    .select('id, user_id, module_slug, quiz_type, override_score, reason, created_by, created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+  if (error) {
+    // Missing table or RLS block — degrade gracefully.
+    console.warn('[getGradeOverrides] table unavailable:', error.message)
+    return []
+  }
+  return data ?? []
+}
+
+// Insert a new grade override. Preserves the original attempt by keeping
+// quiz_responses untouched; admin-side override is read-on-display.
+export async function upsertGradeOverride({ userId, moduleSlug, quizType, overrideScore, reason, adminId }) {
+  if (MOCK_MODE) { await wait(100); return { id: `mock-${Date.now()}` } }
+  const { data, error } = await supabase
+    .from('grade_overrides')
+    .upsert(
+      {
+        user_id: userId,
+        module_slug: moduleSlug,
+        quiz_type: quizType,
+        override_score: overrideScore,
+        reason: reason ?? null,
+        created_by: adminId ?? null,
+      },
+      { onConflict: 'user_id,module_slug,quiz_type' },
+    )
+    .select('id')
+    .single()
+  if (error) throw error
+  return data
+}
+
 // ---------- Admin: action queue ----------
 
 export async function getAdminActionItems(schoolId) {
