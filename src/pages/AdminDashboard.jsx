@@ -6,6 +6,7 @@ import {
   createAssignment,
   createInviteBatch,
   createInviteBatchRows,
+  deleteAssignment,
   getAdminActionItems,
   getModuleQuizAnalytics,
   getModuleQuizQuestions,
@@ -296,7 +297,7 @@ export default function AdminDashboard() {
   const { user, profile } = useAuth()
   const [roleFilter, setRoleFilter]   = useState('all')   // 'all' | 'teacher' | 'parent'
   const [adminView,  setAdminView]    = useState('overview') // 'overview' | 'users' | 'assign'
-  const [assignForm, setAssignForm]   = useState({ moduleSlug: '', roleTarget: 'teacher', dueDate: '' })
+  const [assignForm, setAssignForm]   = useState({ moduleSlug: '', roleTarget: 'teacher', dueDate: '', selectedUserIds: [] })
   const [assignments, setAssignments] = useState(MOCK_ASSIGNMENTS)
   const [assignSaved, setAssignSaved] = useState(false)
   const [assignError, setAssignError] = useState('')
@@ -432,24 +433,79 @@ export default function AdminDashboard() {
     e.preventDefault()
     if (!assignForm.moduleSlug) return
     setAssignError('')
+
+    // Real school_id is a UUID from the profiles table. In mock mode we can
+    // fall through to MOCK_SCHOOL; in prod we refuse rather than insert a
+    // bogus id and hit a DB constraint.
+    const rawSchoolId = profile?.school_id
+    const schoolId = (typeof rawSchoolId === 'string' && rawSchoolId.length > 0)
+      ? rawSchoolId
+      : (MOCK_MODE ? MOCK_SCHOOL.id : null)
+    if (!schoolId) {
+      setAssignError("We couldn't find your school on your profile. Refresh the page, or contact support if this persists.")
+      return
+    }
+    const dueDate  = assignForm.dueDate || null
+
+    // Individual-user targeting: one row per selected user.
+    if (assignForm.roleTarget === 'users') {
+      if (assignForm.selectedUserIds.length === 0) {
+        setAssignError('Pick at least one person, or switch to a role bucket.')
+        return
+      }
+      const selected = MOCK_USERS.filter(u => assignForm.selectedUserIds.includes(u.id))
+      const newRows = selected.map(u => ({
+        id:          `a${Date.now()}-${u.id}`,
+        school_id:   schoolId,
+        user_id:     u.id,
+        module_slug: assignForm.moduleSlug,
+        role_target: u.role,
+        due_date:    dueDate,
+        assigned_at: new Date().toISOString(),
+      }))
+      if (!MOCK_MODE) {
+        try {
+          for (const u of selected) {
+            await createAssignment({
+              schoolId,
+              userId:     u.id,
+              roleTarget: u.role,
+              moduleSlug: assignForm.moduleSlug,
+              assignedBy: user?.id,
+              dueDate,
+            })
+          }
+        } catch (err) {
+          setAssignError(err.message ?? 'Failed to save one or more assignments. Please try again.')
+          return
+        }
+      }
+      setAssignments(prev => [...prev, ...newRows])
+      setAssignForm({ moduleSlug: '', roleTarget: 'teacher', dueDate: '', selectedUserIds: [] })
+      setAssignSaved(true)
+      setTimeout(() => setAssignSaved(false), 3000)
+      return
+    }
+
+    // Role-bucket targeting (teacher / parent / all): one row with user_id=null.
     const newAsgn = {
       id: `a${Date.now()}`,
-      school_id:   profile?.school_id ?? 'school-nlis',
+      school_id:   schoolId,
+      user_id:     null,
       module_slug: assignForm.moduleSlug,
       role_target: assignForm.roleTarget,
-      due_date:    assignForm.dueDate || null,
+      due_date:    dueDate,
       assigned_at: new Date().toISOString(),
     }
-    // Persist to Supabase when not in mock mode
     if (!MOCK_MODE) {
       try {
         await createAssignment({
-          schoolId:   profile?.school_id,
+          schoolId,
           userId:     null,
           roleTarget: assignForm.roleTarget,
           moduleSlug: assignForm.moduleSlug,
           assignedBy: user?.id,
-          dueDate:    assignForm.dueDate || null,
+          dueDate,
         })
       } catch (err) {
         setAssignError(err.message ?? 'Failed to save assignment. Please try again.')
@@ -457,9 +513,39 @@ export default function AdminDashboard() {
       }
     }
     setAssignments(prev => [...prev, newAsgn])
-    setAssignForm({ moduleSlug: '', roleTarget: 'teacher', dueDate: '' })
+    setAssignForm({ moduleSlug: '', roleTarget: 'teacher', dueDate: '', selectedUserIds: [] })
     setAssignSaved(true)
     setTimeout(() => setAssignSaved(false), 3000)
+  }
+
+  // Remove an existing assignment. Optimistic: drops from local state
+  // first, rolls back on failure so a tab refresh isn't needed to see
+  // the delete. Mock-mode skips the network call entirely.
+  async function handleUnassign(assignment) {
+    const meta = MODULE_META[assignment.module_slug]
+    const label = meta?.label ?? assignment.module_slug
+    let audience
+    if (assignment.user_id) {
+      const targetUser = MOCK_USERS.find(u => u.id === assignment.user_id)
+      audience = targetUser?.full_name ?? 'this user'
+    } else if (assignment.role_target === 'all') {
+      audience = 'everyone'
+    } else {
+      audience = `${assignment.role_target}s`
+    }
+    if (!window.confirm(`Remove "${label}" from ${audience}?`)) return
+
+    const previous = assignments
+    setAssignments(prev => prev.filter(a => a.id !== assignment.id))
+
+    if (!MOCK_MODE) {
+      try {
+        await deleteAssignment(assignment.id)
+      } catch (err) {
+        setAssignments(previous)
+        window.alert(err.message ?? 'Failed to remove assignment.')
+      }
+    }
   }
 
   async function handleSingleInvite(e) {
@@ -1282,18 +1368,19 @@ export default function AdminDashboard() {
                       <label style={{ display: 'block', fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--cal-ink-soft)', marginBottom: 7 }}>
                         Assign to
                       </label>
-                      <div style={{ display: 'flex', gap: 8 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                         {[
                           { val: 'teacher', label: 'Teachers only' },
                           { val: 'parent',  label: 'Parents only' },
                           { val: 'all',     label: 'Everyone' },
+                          { val: 'users',   label: 'Specific users' },
                         ].map(opt => (
                           <button
                             key={opt.val}
                             type="button"
                             onClick={() => setAssignForm(f => ({ ...f, roleTarget: opt.val }))}
                             style={{
-                              flex: 1, padding: '10px 8px', border: '1.5px solid',
+                              padding: '10px 8px', border: '1.5px solid',
                               borderRadius: 'var(--r-md)', cursor: 'pointer', fontSize: 12,
                               fontFamily: 'var(--font-display)', fontWeight: 600,
                               borderColor: assignForm.roleTarget === opt.val ? 'var(--cal-teal)' : 'var(--cal-border)',
@@ -1305,6 +1392,74 @@ export default function AdminDashboard() {
                           </button>
                         ))}
                       </div>
+
+                      {assignForm.roleTarget === 'users' && (
+                        <div style={{ marginTop: 12 }}>
+                          <div style={{ fontSize: 11, color: 'var(--cal-muted)', marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
+                            <span>
+                              {assignForm.selectedUserIds.length === 0
+                                ? 'Pick one or more members to assign this module to.'
+                                : `${assignForm.selectedUserIds.length} selected`}
+                            </span>
+                            {assignForm.selectedUserIds.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setAssignForm(f => ({ ...f, selectedUserIds: [] }))}
+                                style={{
+                                  background: 'transparent', border: 'none', padding: 0,
+                                  color: 'var(--cal-teal)', cursor: 'pointer', fontSize: 11,
+                                  fontFamily: 'var(--font-body)', fontWeight: 500,
+                                }}
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                          <div style={{
+                            maxHeight: 200, overflowY: 'auto',
+                            border: '1px solid var(--cal-border)', borderRadius: 'var(--r-md)',
+                            background: '#fff',
+                          }}>
+                            {MOCK_USERS.map((u, i) => {
+                              const checked = assignForm.selectedUserIds.includes(u.id)
+                              return (
+                                <label
+                                  key={u.id}
+                                  style={{
+                                    display: 'flex', alignItems: 'center', gap: 10,
+                                    padding: '8px 12px',
+                                    borderBottom: i < MOCK_USERS.length - 1 ? '1px solid var(--cal-border-lt)' : 'none',
+                                    cursor: 'pointer',
+                                    background: checked ? 'var(--cal-teal-lt)' : 'transparent',
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={e => {
+                                      setAssignForm(f => ({
+                                        ...f,
+                                        selectedUserIds: e.target.checked
+                                          ? [...f.selectedUserIds, u.id]
+                                          : f.selectedUserIds.filter(id => id !== u.id),
+                                      }))
+                                    }}
+                                    style={{ cursor: 'pointer' }}
+                                  />
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: 13, color: 'var(--cal-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {u.full_name}
+                                    </div>
+                                    <div style={{ fontSize: 10, color: 'var(--cal-muted)', textTransform: 'capitalize' }}>
+                                      {u.role} · {u.email}
+                                    </div>
+                                  </div>
+                                </label>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div>
@@ -1346,6 +1501,10 @@ export default function AdminDashboard() {
                     {assignments.map(a => {
                       const meta = MODULE_META[a.module_slug]
                       const days = daysUntil(a.due_date)
+                      const targetUser = a.user_id ? MOCK_USERS.find(u => u.id === a.user_id) : null
+                      const audienceLabel = targetUser
+                        ? `→ ${targetUser.full_name}`
+                        : (a.role_target === 'all' ? 'Everyone' : a.role_target + 's')
                       return (
                         <div key={a.id} style={{
                           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -1359,20 +1518,55 @@ export default function AdminDashboard() {
                               <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--cal-ink)' }}>
                                 {meta?.label ?? a.module_slug}
                               </div>
-                              <div style={{ fontSize: 10, color: 'var(--cal-muted)', textTransform: 'capitalize' }}>
-                                {a.role_target === 'all' ? 'Everyone' : a.role_target + 's'}
+                              <div style={{ fontSize: 10, color: 'var(--cal-muted)', textTransform: targetUser ? 'none' : 'capitalize' }}>
+                                {audienceLabel}
                                 {a.due_date && ` · Due ${fmtDate(a.due_date)}`}
                               </div>
                             </div>
                           </div>
-                          <span className={`badge ${days !== null && days < 0 ? '' : 'badge-done'}`}
-                            style={days !== null && days < 0 ? { background: '#FFEBEE', color: '#C62828' } : {}}
-                          >
-                            {days !== null && days < 0 ? 'Overdue' : 'Active'}
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span className={`badge ${days !== null && days < 0 ? '' : 'badge-done'}`}
+                              style={days !== null && days < 0 ? { background: '#FFEBEE', color: '#C62828' } : {}}
+                            >
+                              {days !== null && days < 0 ? 'Overdue' : 'Active'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleUnassign(a)}
+                              title="Remove assignment"
+                              aria-label={`Remove ${meta?.label ?? a.module_slug} assignment`}
+                              style={{
+                                width: 24, height: 24,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                border: '1px solid var(--cal-border-lt)',
+                                borderRadius: 'var(--r-sm)',
+                                background: '#fff',
+                                color: 'var(--cal-muted)',
+                                cursor: 'pointer',
+                                fontSize: 14, lineHeight: 1,
+                                padding: 0,
+                                transition: 'color 0.15s, border-color 0.15s, background 0.15s',
+                              }}
+                              onMouseEnter={e => {
+                                e.currentTarget.style.color = '#C62828'
+                                e.currentTarget.style.borderColor = '#C62828'
+                                e.currentTarget.style.background = '#FFEBEE'
+                              }}
+                              onMouseLeave={e => {
+                                e.currentTarget.style.color = 'var(--cal-muted)'
+                                e.currentTarget.style.borderColor = 'var(--cal-border-lt)'
+                                e.currentTarget.style.background = '#fff'
+                              }}
+                            >×</button>
+                          </div>
                         </div>
                       )
                     })}
+                    {assignments.length === 0 && (
+                      <div style={{ fontSize: 13, color: 'var(--cal-muted)', padding: '12px 14px' }}>
+                        No active assignments yet.
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1706,8 +1900,106 @@ export default function AdminDashboard() {
               >×</button>
             </div>
 
-            {/* Modal body — module completion rows */}
+            {/* Modal body */}
             <div style={{ padding: '22px 26px' }}>
+
+              {/* Assignments: individual (removable) + inherited from role buckets */}
+              <div className="label-caps" style={{ marginBottom: 12 }}>Assignments</div>
+              {(() => {
+                const individual = assignments.filter(a => a.user_id === selectedUser.id)
+                const inherited  = assignments.filter(a =>
+                  !a.user_id && (a.role_target === 'all' || a.role_target === selectedUser.role)
+                )
+                if (individual.length === 0 && inherited.length === 0) {
+                  return (
+                    <div style={{ fontSize: 13, color: 'var(--cal-muted)', marginBottom: 22 }}>
+                      No assignments yet.
+                    </div>
+                  )
+                }
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 22 }}>
+                    {individual.map(a => {
+                      const meta = MODULE_META[a.module_slug]
+                      return (
+                        <div key={a.id} style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '10px 12px', borderRadius: 'var(--r-md)',
+                          background: 'var(--cal-surface)',
+                          border: '1px solid var(--cal-border-lt)',
+                        }}>
+                          <span style={{ fontSize: 18 }}>{meta?.flag ?? '🌏'}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--cal-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {meta?.label ?? a.module_slug}
+                            </div>
+                            <div style={{ fontSize: 10, color: 'var(--cal-muted)' }}>
+                              Individual{a.due_date && ` · Due ${fmtDate(a.due_date)}`}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleUnassign(a)}
+                            title="Remove assignment"
+                            aria-label={`Remove ${meta?.label ?? a.module_slug} assignment`}
+                            style={{
+                              width: 24, height: 24,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              border: '1px solid var(--cal-border-lt)',
+                              borderRadius: 'var(--r-sm)',
+                              background: '#fff',
+                              color: 'var(--cal-muted)',
+                              cursor: 'pointer',
+                              fontSize: 14, lineHeight: 1,
+                              padding: 0,
+                            }}
+                            onMouseEnter={e => {
+                              e.currentTarget.style.color = '#C62828'
+                              e.currentTarget.style.borderColor = '#C62828'
+                              e.currentTarget.style.background = '#FFEBEE'
+                            }}
+                            onMouseLeave={e => {
+                              e.currentTarget.style.color = 'var(--cal-muted)'
+                              e.currentTarget.style.borderColor = 'var(--cal-border-lt)'
+                              e.currentTarget.style.background = '#fff'
+                            }}
+                          >×</button>
+                        </div>
+                      )
+                    })}
+                    {inherited.map(a => {
+                      const meta = MODULE_META[a.module_slug]
+                      const via = a.role_target === 'all' ? 'Everyone' : `${a.role_target}s`
+                      return (
+                        <div key={a.id} style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '10px 12px', borderRadius: 'var(--r-md)',
+                          background: 'transparent',
+                          border: '1px dashed var(--cal-border-lt)',
+                        }}>
+                          <span style={{ fontSize: 18, opacity: 0.75 }}>{meta?.flag ?? '🌏'}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, color: 'var(--cal-ink-soft)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {meta?.label ?? a.module_slug}
+                            </div>
+                            <div style={{ fontSize: 10, color: 'var(--cal-muted)' }}>
+                              via {via}{a.due_date && ` · Due ${fmtDate(a.due_date)}`}
+                            </div>
+                          </div>
+                          <span style={{
+                            fontFamily: 'var(--font-display)', fontSize: 9, fontWeight: 600,
+                            letterSpacing: '0.06em', textTransform: 'uppercase',
+                            color: 'var(--cal-muted)',
+                            padding: '3px 7px', borderRadius: 'var(--r-sm)',
+                            border: '1px solid var(--cal-border-lt)',
+                          }}>Inherited</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()}
+
               <div className="label-caps" style={{ marginBottom: 12 }}>Module progress</div>
               {getActiveModuleSlugs(selectedUser.role === 'parent' ? 'parent' : 'teacher').map(slug => {
                 const pct = selectedUser.completions?.[slug] ?? 0

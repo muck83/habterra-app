@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import Logo from './Logo'
 
 export default function TopBar({ activePage = 'modules' }) {
-  const { profile, school, isAdmin } = useAuth()
+  const { profile, school, isAdmin, isSuperAdmin } = useAuth()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -30,15 +30,14 @@ export default function TopBar({ activePage = 'modules' }) {
       position: 'relative',
       zIndex: 10,
     }}>
-      {/* Left: logo */}
       <Logo size="sm" theme="dark" />
 
-      {/* Centre: nav */}
       <nav style={{ display: 'flex', gap: 4 }}>
         {[
-          { key: 'modules',  label: 'My Modules',  path: '/dashboard' },
-          { key: 'progress', label: 'Progress',     path: '/progress' },
-          ...(isAdmin ? [{ key: 'admin', label: 'Admin', path: '/admin' }] : []),
+          { key: 'modules',  label: 'My Modules', path: '/dashboard' },
+          { key: 'progress', label: 'Progress',    path: '/progress' },
+          ...(isAdmin      ? [{ key: 'admin',      label: 'Admin',      path: '/admin'      }] : []),
+          ...(isSuperAdmin ? [{ key: 'superadmin', label: 'Superadmin', path: '/superadmin' }] : []),
         ].map(item => (
           <button
             key={item.key}
@@ -61,7 +60,6 @@ export default function TopBar({ activePage = 'modules' }) {
         ))}
       </nav>
 
-      {/* Right: user avatar + school */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }}>
         {school && (
           <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>

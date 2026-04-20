@@ -270,6 +270,16 @@ export async function createAssignment({ schoolId, userId, roleTarget, moduleSlu
   if (error) throw error
 }
 
+// Remove an assignment by id. RLS handles permission — admins can
+// only delete within their own school, superadmins can delete anywhere.
+export async function deleteAssignment(assignmentId) {
+  const { error } = await supabase
+    .from('assignments')
+    .delete()
+    .eq('id', assignmentId)
+  if (error) throw error
+}
+
 // ---------- Completions ----------
 
 export async function getCompletions(userId) {
@@ -603,13 +613,3 @@ export async function updateDimension(dimensionId, { title, content }) {
   if (error) throw error
 }
 
-export async function getAllSimulations(moduleId) {
-  if (MOCK_MODE) return []
-  const { data, error } = await supabase
-    .from('pd_simulations')
-    .select('id, module_id, title, description, dimension_tags, estimated_minutes, status')
-    .eq('module_id', moduleId)
-    .order('sort_order')
-  if (error) throw error
-  return data ?? []
-}
