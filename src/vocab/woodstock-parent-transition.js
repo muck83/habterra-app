@@ -12,11 +12,11 @@ export const woodstockParentTransition = {
   meta: {
     title: 'The Woodstock Curriculum Transition',
     subtitle: 'Understanding the shift from IB to IGCSE, AP, and the Woodstock School Diploma',
-    intro: 'Woodstock is evolving its curriculum from the International Baccalaureate programme to a combination of Cambridge IGCSE, Advanced Placement, and the Woodstock School Diploma. This change is gradual — your child\'s pathway depends entirely on their current grade. This guide answers the questions we heard most often at Parent-Teacher Conferences.',
+    intro: 'Founded in 1854 as the first international boarding school in India — and in all of Asia — Woodstock has reshaped its academic programme many times across more than 170 years in the Himalayas to stay true to its founding purpose. The current shift, from the International Baccalaureate programme to a combination of Cambridge IGCSE, Advanced Placement, and the Woodstock School Diploma, is the latest chapter in that tradition. It is gradual — your child\'s pathway depends entirely on their current grade. This guide answers the questions we heard most often at Parent-Teacher Conferences.',
   },
 
   directorNote: {
-    quote: 'We did not make this decision lightly. Three years of consultation with universities, employers, and our own faculty led us here. The result is a curriculum that is more rigorous, more flexible, and more true to who Woodstock is than any off-the-shelf programme could be.',
+    quote: 'We did not make this decision lightly. Three years of consultation with universities, employers, and our own faculty led us here. In more than 170 years in the Himalayas, Woodstock has reshaped its programme before when the moment required it. The result of this latest work is a curriculum that is more rigorous, more flexible, and more true to who Woodstock is than any off-the-shelf programme could be.',
     attribution: 'Woodstock School Academic Leadership',
   },
 
@@ -177,7 +177,7 @@ export const woodstockParentTransition = {
       en: {
         concept: 'If IB works, why change?',
         concern: 'This feels like disruption for disruption\'s sake. Woodstock had something good.',
-        bridge: 'IB is excellent. Woodstock is not moving away from IB because IB failed — it is moving toward a curriculum that is a better fit for Woodstock\'s specific mission. Over three years, Woodstock\'s faculty and academic leadership consulted admissions officers, IB educators, AP educators, employers, and universities worldwide.',
+        bridge: 'IB is excellent. Woodstock is not moving away from IB because IB failed — it is moving toward a curriculum that is a better fit for Woodstock\'s specific mission. Woodstock was founded in 1854 as the first international boarding school in India and Asia, and across more than 170 years in the Himalayas the school has reshaped its academic programme many times to serve that founding purpose. The current evolution is consistent with that tradition: over three years, Woodstock\'s faculty and academic leadership consulted admissions officers, IB educators, AP educators, employers, and universities worldwide — with a deliberate phasing designed to mature by the school\'s 175th anniversary in 2029.',
         goal: 'You can trust that this change is purposeful. Woodstock is not switching programmes because it is reacting to a problem. It is proactively building a curriculum that is designed for Woodstock — not an off-the-shelf package.',
         whatToAsk: [
           'Did universities request this change? (No. Woodstock initiated it. The university consultation confirmed the new pathway would be equally or better received.)',
@@ -329,25 +329,25 @@ export const woodstockParentTransition = {
       {
         id: 'freedom-to-specialize',
         title: 'They study what they\'re actually good at',
-        icon: '🎯',
+        icon: '🌱',
         detail: 'IB requires six prescribed subjects across specific groups. AP does not. In Grades 11–12, your child chooses which subjects to study at university level. If they are strong in Sciences and want to specialize, they can take three or four Science APs. For many students, this shift from "do everything" to "go deep in what you love" is transformative.',
       },
       {
         id: 'real-university-work',
         title: 'AP courses are genuinely university-level',
-        icon: '🎓',
+        icon: '📜',
         detail: 'AP courses are not "like" university courses — they are university courses, recognized by the College Board and taught to a standard that earns college credit at 4,000+ institutions. A student who scores 5 in AP Calculus has demonstrated proficiency equivalent to first-year university calculus.',
       },
       {
         id: 'early-admission-window',
         title: 'They can have a university place before Grade 12 exams',
-        icon: '🏆',
+        icon: '🗝️',
         detail: 'AP exams happen at the end of each academic year (May). A student who performs strongly in Grades 10–11 can accumulate AP scores that UK universities evaluate for conditional or unconditional offers — before Grade 12 begins. This structural advantage does not exist in IB.',
       },
       {
         id: 'igcse-clear-foundation',
         title: 'Cambridge IGCSE gives clear, external validation',
-        icon: '📋',
+        icon: '🪨',
         detail: 'IGCSE exams are external, subject-specific, and graded by Cambridge. Every grade (A*–G) is externally verified and internationally comparable. Students finish Grade 10 with a Cambridge credential in hand, having proven themselves against an international standard, before the higher-stakes AP years begin.',
       },
       {
@@ -359,7 +359,7 @@ export const woodstockParentTransition = {
       {
         id: 'distributed-assessment',
         title: 'Assessment is spread across years — not one high-stakes season',
-        icon: '📅',
+        icon: '🛤️',
         detail: 'AP assessment is cumulative: IGCSE exams in May of Grade 10, then AP exams each May from Grades 10–12. Performance builds year by year. If a student has a difficult exam period one year, they have more opportunities. For students who experience anxiety around high-stakes testing, this distributed model is meaningfully better for wellbeing.',
       },
       {

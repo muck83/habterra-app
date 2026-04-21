@@ -74,10 +74,10 @@ VALUES
       "meta": {
         "title": "The Woodstock Curriculum Transition",
         "subtitle": "Understanding the shift from IB to IGCSE, AP, and the Woodstock School Diploma",
-        "intro": "Woodstock is evolving its curriculum from the International Baccalaureate programme to a combination of Cambridge IGCSE, Advanced Placement, and the Woodstock School Diploma. This change is gradual - your child's pathway depends entirely on their current grade. This guide answers the questions heard most often at Parent-Teacher Conferences."
+        "intro": "Founded in 1854 as the first international boarding school in India — and in all of Asia — Woodstock has reshaped its academic programme many times across more than 170 years in the Himalayas to stay true to its founding purpose. The current shift, from the International Baccalaureate programme to a combination of Cambridge IGCSE, Advanced Placement, and the Woodstock School Diploma, is the latest chapter in that tradition. It is gradual — your child's pathway depends entirely on their current grade. This guide answers the questions heard most often at Parent-Teacher Conferences."
       },
       "directorNote": {
-        "quote": "We did not make this decision lightly. Three years of consultation with universities, employers, and our own faculty led us here. The result is a curriculum that is more rigorous, more flexible, and more true to who Woodstock is than any off-the-shelf programme could be.",
+        "quote": "We did not make this decision lightly. Three years of consultation with universities, employers, and our own faculty led us here. In more than 170 years in the Himalayas, Woodstock has reshaped its programme before when the moment required it. The result of this latest work is a curriculum that is more rigorous, more flexible, and more true to who Woodstock is than any off-the-shelf programme could be.",
         "attribution": "Woodstock School Academic Leadership"
       },
       "openingHook": {
@@ -279,7 +279,7 @@ VALUES
           "label": "Why Did Woodstock Evolve Beyond IB?",
           "concept": "If IB works, why change?",
           "concern": "This feels like disruption for disruption's sake. Woodstock had something good.",
-          "bridge": "IB is excellent. Woodstock is not moving away from IB because IB failed — it is moving toward a curriculum that is a better fit for Woodstock's specific mission. Over three years, Woodstock's faculty and academic leadership consulted admissions officers, IB educators, AP educators, employers, and universities worldwide.",
+          "bridge": "IB is excellent. Woodstock is not moving away from IB because IB failed — it is moving toward a curriculum that is a better fit for Woodstock's specific mission. Woodstock was founded in 1854 as the first international boarding school in India and Asia, and across more than 170 years in the Himalayas the school has reshaped its academic programme many times to serve that founding purpose. The current evolution is consistent with that tradition: over three years, Woodstock's faculty and academic leadership consulted admissions officers, IB educators, AP educators, employers, and universities worldwide — with a deliberate phasing designed to mature by the school's 175th anniversary in 2029.",
           "goal": "You can trust that this change is purposeful. Woodstock is not switching programmes because it is reacting to a problem. It is proactively building a curriculum that is designed for Woodstock — not an off-the-shelf package.",
           "whatToAsk": [
             "Did universities request this change? (No. Woodstock initiated it. The university consultation confirmed the new pathway would be equally or better received.)",

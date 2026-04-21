@@ -15,7 +15,7 @@ import { useAuth } from '../context/AuthContext'
 import { getDimensions, getModule, getQuizQuestions, upsertCompletion } from '../lib/supabase'
 import { woodstockParentTransition as WOODSTOCK_VOCAB_FALLBACK } from '../vocab/woodstock-parent-transition'
 
-const MOCK_MODE = !import.meta.env.VITE_SUPABASE_URL
+const MOCK_MODE = import.meta.env.VITE_MOCK_MODE === 'true'
 const FETCH_TIMEOUT_MS = 8000
 const WOODSTOCK_DB_ID = 'woodstock-001'
 
@@ -47,9 +47,12 @@ const WOODSTOCK_BASE_DATA = {
 }
 
 /* ── Woodstock brand colours ── */
-const WS  = '#5B3A8C'   // IB purple / primary
-const GN  = '#1D9E75'   // IGCSE green / reassurance
-const OG  = '#C45C26'   // AP orange / watch-out
+// Primary matches the maroon used across woodstockschool.in — the school's
+// institutional brick red. Green and orange are kept as semantic accents
+// (reassurance / watch-out) rather than credential-specific brand colours.
+const WS  = '#7B302E'   // Woodstock maroon / primary
+const GN  = '#1D9E75'   // reassurance (also used for IGCSE content)
+const OG  = '#C45C26'   // watch-out (also used for AP content)
 
 /* ── Grade helpers ── */
 const GRADE_TO_COHORT = {
@@ -66,9 +69,9 @@ const CHAPTERS_NEW = [
   { id: 'pathway',      icon: '🗺️',  label: 'Your Pathway' },
   { id: 'overview',     icon: '📚',  label: "What's Changing" },
   { id: 'igcse',        icon: '📐',  label: 'IGCSE' },
-  { id: 'ap',           icon: '🎯',  label: 'AP & WSD' },
+  { id: 'ap',           icon: '🧗',  label: 'AP & WSD' },
   { id: 'universities', icon: '🌍',  label: 'Universities' },
-  { id: 'students',     icon: '🏆',  label: 'Student Life' },
+  { id: 'students',     icon: '🏕️',  label: 'Student Life' },
   { id: 'scenarios',    icon: '🎭',  label: 'Conversations' },
   { id: 'knowledgecheck', icon: '🧠', label: 'Knowledge Check' },
   { id: 'nextsteps',    icon: '❓',  label: 'Next Steps' },
@@ -265,7 +268,7 @@ function GradeIntake({ onSelect }) {
               onMouseLeave={() => setHover(null)}
               onClick={() => onSelect(g)}
               style={{
-                background: hover === g ? WS : '#F5F0FA',
+                background: hover === g ? WS : WS + '0F',
                 color: hover === g ? '#fff' : WS,
                 border: `2px solid ${hover === g ? WS : WS + '33'}`,
                 borderRadius: 10, padding: '14px 0',
@@ -2010,7 +2013,7 @@ export default function WoodstockModuleView() {
             {/* Privacy disclosure — shown until the parent acknowledges */}
             {!privacyAcked && (
               <div style={{
-                background: '#F5F1FA',
+                background: WS + '0F',
                 border: `1.5px solid ${WS}40`,
                 borderRadius: 'var(--r-lg)',
                 padding: '18px 22px',
