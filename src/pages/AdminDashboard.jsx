@@ -31,7 +31,9 @@ import {
   MOCK_ADMIN_ACTION_ITEMS, MOCK_QUIZ_ANALYTICS,
   getActiveModuleSlugs, getSchoolStats, MOCK_SCHOOL,
 } from '../data/mockData'
-import ModulesView from './admin/views/ModulesView'
+import ModulesView   from './admin/views/ModulesView'
+import AnalyticsView from './admin/views/AnalyticsView'
+import ActionsView   from './admin/views/ActionsView'
 
 const MOCK_MODE = !import.meta.env.VITE_SUPABASE_URL
 
@@ -1828,118 +1830,16 @@ export default function AdminDashboard() {
           )}
 
           {/* ════════════════ ACTION QUEUE ════════════════ */}
-          {adminView === 'actions' && (() => {
-            const grouped = ['high', 'medium', 'low'].map(severity => ({
-              severity,
-              items: actionItems.filter(item => item.severity === severity),
-            }))
-
-            return (
-              <>
-                <div style={{ marginBottom: 28, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 20 }}>
-                  <div>
-                    <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, color: 'var(--cal-ink)', marginBottom: 4 }}>Action Queue</h2>
-                    <p style={{ fontSize: 13, color: 'var(--cal-muted)' }}>What needs attention next, generated from invites, progress, deadlines, and quiz responses.</p>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={handleActionRefresh}
-                    disabled={actionRefreshing}
-                    style={{ fontSize: 13, padding: '10px 18px', opacity: actionRefreshing ? 0.6 : 1 }}
-                  >
-                    {actionRefreshing ? 'Refreshing...' : 'Refresh'}
-                  </button>
-                </div>
-
-                {actionError && (
-                  <div style={{ background: '#FDEDED', borderRadius: 'var(--r-md)', padding: '14px 18px', marginBottom: 18, fontSize: 13, color: '#B3261E', lineHeight: 1.6 }}>
-                    {actionError}
-                  </div>
-                )}
-
-                {actionLoading && (
-                  <div style={{ background: '#fff', borderRadius: 'var(--r-lg)', boxShadow: 'var(--shadow-sm)', padding: '28px', fontSize: 13, color: 'var(--cal-muted)' }}>
-                    Loading action items...
-                  </div>
-                )}
-
-                {!actionLoading && actionItems.length === 0 && (
-                  <div style={{ background: '#fff', borderRadius: 'var(--r-lg)', boxShadow: 'var(--shadow-sm)', padding: '34px 30px', maxWidth: 720 }}>
-                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, color: 'var(--cal-ink)', marginBottom: 8 }}>Nothing needs attention right now</div>
-                    <div style={{ fontSize: 13, color: 'var(--cal-muted)', lineHeight: 1.7 }}>
-                      Refresh the queue after new invites, assignments, or quiz responses land.
-                    </div>
-                  </div>
-                )}
-
-                {!actionLoading && actionItems.length > 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 900 }}>
-                    {grouped.map(group => {
-                      if (group.items.length === 0) return null
-                      const sevStyle = severityStyles(group.severity)
-
-                      return (
-                        <section key={group.severity}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', border: '1px solid', borderRadius: 'var(--r-full)', padding: '4px 10px', fontSize: 10, fontFamily: 'var(--font-display)', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', ...sevStyle }}>
-                              {group.severity}
-                            </span>
-                            <span style={{ fontSize: 12, color: 'var(--cal-muted)' }}>
-                              {group.items.length} item{group.items.length !== 1 ? 's' : ''}
-                            </span>
-                          </div>
-
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                            {group.items.map(item => {
-                              const moduleLabel = modulePillLabel(item.module_slug)
-                              const userName = item.user?.full_name
-                              const userEmail = item.user?.email ?? item.metadata?.email
-
-                              return (
-                                <div key={item.id} style={{ background: '#fff', borderRadius: 'var(--r-lg)', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--cal-border-lt)', padding: '18px 20px' }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 18, alignItems: 'flex-start' }}>
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-                                        <span className="badge badge-assigned" style={{ fontSize: 9 }}>{actionTypeLabel(item.action_type)}</span>
-                                        {moduleLabel && <span className="badge badge-progress" style={{ fontSize: 9 }}>{moduleLabel}</span>}
-                                        {userName && <span className="badge" style={{ fontSize: 9, background: 'var(--cal-border-lt)', color: 'var(--cal-muted)' }}>{userName}</span>}
-                                        {item.due_date && <span className="badge badge-soon" style={{ fontSize: 9 }}>Due {fmtDate(item.due_date)}</span>}
-                                      </div>
-                                      <div style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 700, color: 'var(--cal-ink)', marginBottom: 6 }}>
-                                        {item.title}
-                                      </div>
-                                      <div style={{ fontSize: 12, color: 'var(--cal-muted)', lineHeight: 1.65 }}>
-                                        {item.detail}
-                                      </div>
-                                      {userEmail && (
-                                        <div style={{ marginTop: 8, fontSize: 11, color: 'var(--cal-muted)' }}>
-                                          {userEmail}
-                                        </div>
-                                      )}
-                                    </div>
-
-                                    <button
-                                      type="button"
-                                      className="btn btn-ghost"
-                                      onClick={() => handleActionResolve(item.id)}
-                                      style={{ flexShrink: 0, fontSize: 12, padding: '8px 12px' }}
-                                    >
-                                      Resolve
-                                    </button>
-                                  </div>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </section>
-                      )
-                    })}
-                  </div>
-                )}
-              </>
-            )
-          })()}
+          {adminView === 'actions' && (
+            <ActionsView
+              actionItems={actionItems}
+              actionError={actionError}
+              actionLoading={actionLoading}
+              actionRefreshing={actionRefreshing}
+              handleActionRefresh={handleActionRefresh}
+              handleActionResolve={handleActionResolve}
+            />
+          )}
 
           {/* ════════════════ MODULES ════════════════ */}
           {adminView === 'modules' && (
@@ -2208,101 +2108,15 @@ export default function AdminDashboard() {
             </>
           )}
           {/* ════════════════ QUIZ ANALYTICS ════════════════ */}
-          {adminView === 'analytics' && (() => {
-            const rows = (analyticsData ?? [])
-              .slice()
-              .sort((a, b) => (a.correct / Math.max(a.n, 1)) - (b.correct / Math.max(b.n, 1)))  // hardest first
-            const belowThreshold = rows.filter(r => (r.correct / r.n) < 0.6).length
-            return (
-              <>
-                <div style={{ marginBottom: 28, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, color: 'var(--cal-ink)', marginBottom: 4 }}>Quiz Analytics</h2>
-                    <p style={{ fontSize: 13, color: 'var(--cal-muted)' }}>Where teachers are struggling — sorted by difficulty (hardest first).</p>
-                  </div>
-                  <select
-                    value={analyticsSlug}
-                    onChange={e => setAnalyticsSlug(e.target.value)}
-                    style={{ fontFamily: 'var(--font-body)', fontSize: 13, color: 'var(--cal-ink)', background: '#fff', border: '1.5px solid var(--cal-border)', borderRadius: 'var(--r-md)', padding: '8px 12px', outline: 'none', cursor: 'pointer' }}
-                  >
-                    {Object.entries(MODULE_META).filter(([s]) => s !== 'woodstock-transition').map(([slug, m]) => (
-                      <option key={slug} value={slug}>{m.flag} {m.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {analyticsLoading && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--cal-muted)', padding: '36px 0' }}>
-                    <div style={{ width: 16, height: 16, border: '2px solid var(--cal-border)', borderTopColor: 'var(--cal-teal)', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-                    <span style={{ fontSize: 13 }}>Loading quiz analytics...</span>
-                    <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
-                  </div>
-                )}
-
-                {!analyticsLoading && analyticsError && (
-                  <div style={{ background: '#FFEBEE', borderRadius: 'var(--r-md)', padding: '14px 18px', marginBottom: 20, fontSize: 13, color: '#C62828', lineHeight: 1.6 }}>
-                    {analyticsError}
-                  </div>
-                )}
-
-                {!analyticsLoading && !analyticsError && belowThreshold > 0 && (
-                  <div style={{ background: 'var(--cal-amber-lt)', borderRadius: 'var(--r-md)', padding: '14px 18px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12, border: '1px solid rgba(232,150,30,0.3)' }}>
-                    <span style={{ fontSize: 20 }}>⚠️</span>
-                    <div style={{ fontSize: 13, color: 'var(--cal-ink)', lineHeight: 1.6 }}>
-                      <strong style={{ fontFamily: 'var(--font-display)' }}>{belowThreshold} question{belowThreshold > 1 ? 's' : ''} below 60% correct.</strong>
-                      {' '}Consider a targeted follow-up in your next staff meeting.
-                    </div>
-                  </div>
-                )}
-
-                {!analyticsLoading && !analyticsError && rows.length === 0 && (
-                  <div style={{ textAlign: 'center', padding: '60px 40px', color: 'var(--cal-muted)' }}>
-                    <div style={{ fontSize: 32, marginBottom: 12 }}>📊</div>
-                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 600, color: 'var(--cal-ink)', marginBottom: 8 }}>No responses yet</div>
-                    <div style={{ fontSize: 13 }}>No quiz responses yet for this module.</div>
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {!analyticsLoading && !analyticsError && rows.map(row => {
-                    const pct     = Math.round((row.correct / row.n) * 100)
-                    const color   = pct < 60 ? '#C62828' : pct < 75 ? 'var(--cal-amber-dark)' : 'var(--cal-success)'
-                    const bgColor = pct < 60 ? '#FEF2F2' : pct < 75 ? 'var(--cal-amber-lt)' : 'var(--cal-success-lt)'
-                    return (
-                      <div key={row.id} style={{ background: '#fff', borderRadius: 'var(--r-lg)', boxShadow: 'var(--shadow-sm)', padding: '18px 22px', borderLeft: `4px solid ${color}` }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 10 }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <span className="badge badge-assigned" style={{ fontSize: 9, marginBottom: 8, display: 'inline-flex' }}>{row.label}</span>
-                            <div style={{ fontSize: 13, color: 'var(--cal-ink)', lineHeight: 1.5, fontWeight: 500 }}>
-                              {row.prompt.length > 120 ? row.prompt.slice(0, 120) + '…' : row.prompt}
-                            </div>
-                          </div>
-                          <div style={{ flexShrink: 0, textAlign: 'center', background: bgColor, borderRadius: 'var(--r-md)', padding: '10px 16px', minWidth: 72 }}>
-                            <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 800, color, lineHeight: 1 }}>{pct}%</div>
-                            <div style={{ fontSize: 9, color: 'var(--cal-muted)', marginTop: 3, fontFamily: 'var(--font-display)', fontWeight: 600 }}>{row.correct}/{row.n}</div>
-                          </div>
-                        </div>
-                        <div className="progress-track" style={{ marginBottom: pct < 75 ? 10 : 0 }}>
-                          <div className="progress-fill" style={{ width: `${pct}%`, background: color }} />
-                        </div>
-                        {pct < 75 && (
-                          <div style={{ fontSize: 11, color: 'var(--cal-muted)', lineHeight: 1.6 }}>
-                            <strong style={{ fontFamily: 'var(--font-display)', color: 'var(--cal-ink-soft)' }}>Most common wrong answer:</strong>{' '}{row.topWrong ?? 'No common wrong answer yet.'}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-
-                {MOCK_MODE && rows.length > 0 && (
-                  <div style={{ marginTop: 20, padding: '12px 16px', background: 'var(--cal-border-lt)', borderRadius: 'var(--r-md)', fontSize: 11, color: 'var(--cal-muted)' }}>
-                    Demo data shown above. Live analytics populate from quiz_responses table as teachers complete modules.
-                  </div>
-                )}
-              </>
-            )
-          })()}
+          {adminView === 'analytics' && (
+            <AnalyticsView
+              analyticsSlug={analyticsSlug}
+              setAnalyticsSlug={setAnalyticsSlug}
+              analyticsData={analyticsData}
+              analyticsLoading={analyticsLoading}
+              analyticsError={analyticsError}
+            />
+          )}
 
           {/* ════════════════ INVITE MEMBER ════════════════ */}
           {adminView === 'invite' && (
