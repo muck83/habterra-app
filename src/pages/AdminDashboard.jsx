@@ -4,10 +4,13 @@ import TopBar from '../components/TopBar'
 import { useAuth } from '../context/AuthContext'
 import {
   createAssignment,
+  createAssignmentExclusion,
   createInviteBatch,
   createInviteBatchRows,
   deleteAssignment,
+  deleteAssignmentExclusion,
   getAdminActionItems,
+  getAssignmentExclusionsForSchool,
   getCompletions,
   getGradeOverrides,
   getModuleQuizAnalytics,
@@ -58,6 +61,10 @@ export default function AdminDashboard() {
   const [adminView,  setAdminView]    = useState('overview') // 'overview' | 'users' | 'assign'
   const [assignForm, setAssignForm]   = useState({ moduleSlug: '', roleTarget: 'teacher', dueDate: '', selectedUserIds: [] })
   const [assignments, setAssignments] = useState(MOCK_ASSIGNMENTS)
+  // Per-user exclusions on role-level assignments (see
+  // supabase/migrations/assignment_exclusions.sql). Rows shaped
+  // { id, assignment_id, user_id, excluded_by, excluded_at }.
+  const [exclusions, setExclusions] = useState([])
   const [assignSaved, setAssignSaved] = useState(false)
   const [assignError, setAssignError] = useState('')
   const [selectedUser, setSelectedUser] = useState(null)  // for user detail modal
@@ -268,6 +275,26 @@ export default function AdminDashboard() {
     return () => { active = false }
   }, [profile?.school_id, membersRefreshKey])
 
+  // Load per-user exclusions on role-level assignments for this school.
+  // Degrades to [] if the migration hasn't run (table missing).
+  useEffect(() => {
+    if (MOCK_MODE) { setExclusions([]); return }
+    const schoolId = profile?.school_id
+    if (!schoolId) return
+    let active = true
+    getAssignmentExclusionsForSchool(schoolId)
+      .then(rows => { if (active) setExclusions(rows) })
+      .catch(err => {
+        // Soft-fail: if the table is unreachable we just show every
+        // inherited assignment as active (current behavior).
+        if (active) {
+          console.warn('Failed to load assignment exclusions:', err?.message)
+          setExclusions([])
+        }
+      })
+    return () => { active = false }
+  }, [profile?.school_id, membersRefreshKey])
+
   // When the detail modal opens (selectedUser set), pull real completions,
   // quiz scores, and any prior grade overrides. MOCK mode short-circuits.
   useEffect(() => {
@@ -437,6 +464,63 @@ export default function AdminDashboard() {
     setAssignForm({ moduleSlug: '', roleTarget: 'teacher', dueDate: '', selectedUserIds: [] })
     setAssignSaved(true)
     setTimeout(() => setAssignSaved(false), 3000)
+  }
+
+  // Exclude a specific user from an inherited (role-level) assignment.
+  // Creates a row in assignment_exclusions; the client filters excluded
+  // assignments out of the user's module list, progress, and grades.
+  // Optimistic: adds locally first, rolls back on failure.
+  async function handleExcludeFromInherited(assignment, user) {
+    if (!assignment || !user) return
+    const meta = MODULE_META[assignment.module_slug]
+    const label = meta?.label ?? assignment.module_slug
+    const who = user.full_name || user.email || 'this user'
+    if (!window.confirm(`Remove "${label}" just for ${who}?\n\nOthers will still have this assignment.`)) return
+
+    const tempId = `pending-exclude-${Date.now()}`
+    const optimistic = {
+      id: tempId,
+      assignment_id: assignment.id,
+      user_id: user.id,
+      excluded_by: profile?.id ?? null,
+      excluded_at: new Date().toISOString(),
+    }
+    const previous = exclusions
+    setExclusions(prev => [...prev, optimistic])
+
+    if (MOCK_MODE) return
+
+    try {
+      const row = await createAssignmentExclusion({
+        assignmentId: assignment.id,
+        userId: user.id,
+        excludedBy: profile?.id,
+      })
+      // Swap optimistic row for real one.
+      setExclusions(prev => prev.map(e => e.id === tempId ? (row ?? { ...optimistic, id: row?.id ?? tempId }) : e))
+    } catch (err) {
+      setExclusions(previous)
+      window.alert(err?.message ?? 'Failed to exclude user from assignment.')
+    }
+  }
+
+  // Undo an exclusion. Restores the inherited assignment for this user.
+  async function handleUndoExclusion(exclusion) {
+    if (!exclusion) return
+    const previous = exclusions
+    setExclusions(prev => prev.filter(e => e.id !== exclusion.id))
+
+    if (MOCK_MODE) return
+    // Optimistic-only rows that never hit the db (tempId pattern) have
+    // no server side to clean up.
+    if (typeof exclusion.id === 'string' && exclusion.id.startsWith('pending-')) return
+
+    try {
+      await deleteAssignmentExclusion(exclusion.id)
+    } catch (err) {
+      setExclusions(previous)
+      window.alert(err?.message ?? 'Failed to restore assignment.')
+    }
   }
 
   // Remove an existing assignment. Optimistic: drops from local state
@@ -1141,6 +1225,7 @@ export default function AdminDashboard() {
               activeSlugs={activeSlugs}
               visibleUsers={visibleUsers}
               assignments={assignments}
+              exclusions={exclusions}
               roleFilter={roleFilter}
               setRoleFilter={setRoleFilter}
               setAdminView={setAdminView}
@@ -1262,11 +1347,14 @@ export default function AdminDashboard() {
           deactivateSaving={deactivateSaving}
           handleDeactivateUser={handleDeactivateUser}
           assignments={assignments}
+          exclusions={exclusions}
           dueDateEditing={dueDateEditing}
           setDueDateEditing={setDueDateEditing}
           dueDateSaving={dueDateSaving}
           handleSaveDueDate={handleSaveDueDate}
           handleUnassign={handleUnassign}
+          handleExcludeFromInherited={handleExcludeFromInherited}
+          handleUndoExclusion={handleUndoExclusion}
           addModuleForm={addModuleForm}
           setAddModuleForm={setAddModuleForm}
           addModuleSaving={addModuleSaving}

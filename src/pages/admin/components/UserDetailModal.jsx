@@ -34,11 +34,14 @@ export default function UserDetailModal({
   handleDeactivateUser,
   // assignments
   assignments,
+  exclusions,
   dueDateEditing,
   setDueDateEditing,
   dueDateSaving,
   handleSaveDueDate,
   handleUnassign,
+  handleExcludeFromInherited,
+  handleUndoExclusion,
   // add module
   addModuleForm,
   setAddModuleForm,
@@ -348,14 +351,23 @@ export default function UserDetailModal({
             </div>
           )}
 
-          {/* Assignments: individual (removable) + inherited from role buckets */}
+          {/* Assignments: individual (removable) + inherited from role buckets.
+              Inherited rows can be excluded per-user via assignment_exclusions. */}
           <div className="label-caps" style={{ marginBottom: 12 }}>Assignments</div>
           {(() => {
             const individual = assignments.filter(a => a.user_id === selectedUser.id)
-            const inherited  = assignments.filter(a =>
+            const inheritedAll = assignments.filter(a =>
               !a.user_id && (a.role_target === 'all' || a.role_target === selectedUser.role)
             )
-            if (individual.length === 0 && inherited.length === 0) {
+            // Index exclusions by assignment_id for this user.
+            const exclusionByAssignment = new Map(
+              (exclusions ?? [])
+                .filter(e => e.user_id === selectedUser.id)
+                .map(e => [e.assignment_id, e])
+            )
+            const inherited = inheritedAll.filter(a => !exclusionByAssignment.has(a.id))
+            const excluded  = inheritedAll.filter(a =>  exclusionByAssignment.has(a.id))
+            if (individual.length === 0 && inherited.length === 0 && excluded.length === 0) {
               return (
                 <div style={{ fontSize: 13, color: 'var(--cal-muted)', marginBottom: 22 }}>
                   No assignments yet.
@@ -452,6 +464,77 @@ export default function UserDetailModal({
                         padding: '3px 7px', borderRadius: 'var(--r-sm)',
                         border: '1px solid var(--cal-border-lt)',
                       }}>Inherited</span>
+                      {handleExcludeFromInherited && (
+                        <button
+                          type="button"
+                          onClick={() => handleExcludeFromInherited(a, selectedUser)}
+                          title={`Remove ${meta?.label ?? a.module_slug} just for this user`}
+                          aria-label={`Remove ${meta?.label ?? a.module_slug} just for this user`}
+                          style={{
+                            width: 24, height: 24,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            border: '1px solid var(--cal-border-lt)',
+                            borderRadius: 'var(--r-sm)',
+                            background: '#fff',
+                            color: 'var(--cal-muted)',
+                            cursor: 'pointer',
+                            fontSize: 14, lineHeight: 1,
+                            padding: 0,
+                          }}
+                          onMouseEnter={e => {
+                            e.currentTarget.style.color = '#C62828'
+                            e.currentTarget.style.borderColor = '#C62828'
+                            e.currentTarget.style.background = '#FFEBEE'
+                          }}
+                          onMouseLeave={e => {
+                            e.currentTarget.style.color = 'var(--cal-muted)'
+                            e.currentTarget.style.borderColor = 'var(--cal-border-lt)'
+                            e.currentTarget.style.background = '#fff'
+                          }}
+                        >×</button>
+                      )}
+                    </div>
+                  )
+                })}
+                {excluded.map(a => {
+                  const meta = MODULE_META[a.module_slug]
+                  const exclusion = exclusionByAssignment.get(a.id)
+                  return (
+                    <div key={`excluded-${a.id}`} style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '10px 12px', borderRadius: 'var(--r-md)',
+                      background: 'transparent',
+                      border: '1px dashed #F5C2C2',
+                      opacity: 0.85,
+                    }}>
+                      <span style={{ fontSize: 18, opacity: 0.5, textDecoration: 'line-through' }}>
+                        {meta?.flag ?? '🌏'}
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, color: 'var(--cal-muted)', textDecoration: 'line-through', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {meta?.label ?? a.module_slug}
+                        </div>
+                        <div style={{ fontSize: 10, color: '#B3261E' }}>
+                          Excluded for this user
+                        </div>
+                      </div>
+                      {handleUndoExclusion && (
+                        <button
+                          type="button"
+                          onClick={() => handleUndoExclusion(exclusion)}
+                          title="Restore this inherited assignment"
+                          style={{
+                            fontFamily: 'var(--font-display)',
+                            fontSize: 10, fontWeight: 600, letterSpacing: '0.04em',
+                            textTransform: 'uppercase',
+                            padding: '4px 10px', borderRadius: 'var(--r-sm)',
+                            border: '1px solid var(--cal-border)',
+                            background: '#fff',
+                            color: 'var(--cal-ink-soft)',
+                            cursor: 'pointer',
+                          }}
+                        >Restore</button>
+                      )}
                     </div>
                   )
                 })}
@@ -511,9 +594,20 @@ export default function UserDetailModal({
           <div className="label-caps" style={{ marginBottom: 12 }}>Module progress</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
             {(() => {
+              // Excluded assignment IDs for this user (role-level rows the
+              // admin explicitly removed via assignment_exclusions).
+              const excludedIds = new Set(
+                (exclusions ?? [])
+                  .filter(e => e.user_id === selectedUser.id)
+                  .map(e => e.assignment_id)
+              )
               const userAssignmentSlugs = new Set(
                 assignments
-                  .filter(a => a.user_id === selectedUser.id || (!a.user_id && (a.role_target === 'all' || a.role_target === selectedUser.role)))
+                  .filter(a =>
+                    (a.user_id === selectedUser.id
+                      || (!a.user_id && (a.role_target === 'all' || a.role_target === selectedUser.role)))
+                    && !excludedIds.has(a.id)
+                  )
                   .map(a => a.module_slug)
               )
               const slugs = Array.from(userAssignmentSlugs)
@@ -577,9 +671,20 @@ export default function UserDetailModal({
           <div className="label-caps" style={{ marginBottom: 12 }}>Grades</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
             {(() => {
+              // Excluded assignment IDs for this user (role-level rows the
+              // admin explicitly removed via assignment_exclusions).
+              const excludedIds = new Set(
+                (exclusions ?? [])
+                  .filter(e => e.user_id === selectedUser.id)
+                  .map(e => e.assignment_id)
+              )
               const userAssignmentSlugs = new Set(
                 assignments
-                  .filter(a => a.user_id === selectedUser.id || (!a.user_id && (a.role_target === 'all' || a.role_target === selectedUser.role)))
+                  .filter(a =>
+                    (a.user_id === selectedUser.id
+                      || (!a.user_id && (a.role_target === 'all' || a.role_target === selectedUser.role)))
+                    && !excludedIds.has(a.id)
+                  )
                   .map(a => a.module_slug)
               )
               const slugs = Array.from(userAssignmentSlugs)

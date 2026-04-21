@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { getAssignments, getCompletions, deleteAssignment } from '../lib/supabase'
+import {
+  getAssignments,
+  getAssignmentExclusionsForUser,
+  getCompletions,
+  deleteAssignment,
+} from '../lib/supabase'
 import TopBar from '../components/TopBar'
 import ModuleCard from '../components/ModuleCard'
 import ErrorState from '../components/ErrorState'
@@ -44,12 +49,17 @@ export default function Dashboard() {
     Promise.all([
       getAssignments(user.id, profile.school_id),
       getCompletions(user.id),
+      getAssignmentExclusionsForUser(user.id),
     ])
-      .then(([asgn, comp]) => {
+      .then(([asgn, comp, excl]) => {
         clearTimeout(timer)
         if (!active) return
         active = false
-        setAssignments(asgn)
+        // Drop any role-level assignments this user has been excluded
+        // from (individual rows are never excluded — they're removed
+        // by deleting the row outright).
+        const excludedIds = new Set((excl ?? []).map(e => e.assignment_id))
+        setAssignments(asgn.filter(a => !excludedIds.has(a.id)))
         const idx = {}
         comp.forEach(c => { idx[c.module_slug] = c })
         setCompletions(idx)

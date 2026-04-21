@@ -12,6 +12,7 @@ export default function OverviewView({
   activeSlugs,
   visibleUsers,
   assignments,
+  exclusions,
   roleFilter,
   setRoleFilter,
   setAdminView,
@@ -19,8 +20,8 @@ export default function OverviewView({
   primerDismissed,
   dismissPrimer,
 }) {
-  const userSlugs = (u) => computeUserSlugs(u, assignments)
-  const userOverallPct = (u) => computeUserOverallPct(u, assignments)
+  const userSlugs = (u) => computeUserSlugs(u, assignments, exclusions)
+  const userOverallPct = (u) => computeUserOverallPct(u, assignments, exclusions)
 
   return (
     <>

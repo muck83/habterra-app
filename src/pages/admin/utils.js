@@ -41,17 +41,28 @@ export function daysUntil(dateStr) {
 
 // Which module slugs apply to a given user, based on the school's
 // assignment rows. `assignments` is the shell's state.
-export function computeUserSlugs(user, assignments) {
+// `exclusions` (optional) carries per-user role-level exclusions from
+// assignment_exclusions; when supplied, we drop assignments the user
+// has been explicitly excluded from.
+export function computeUserSlugs(user, assignments, exclusions = []) {
+  const excludedIds = new Set(
+    exclusions
+      .filter(e => e.user_id === user.id)
+      .map(e => e.assignment_id)
+  )
   return assignments
-    .filter(a => a.role_target === 'all' || a.role_target === user.role)
+    .filter(a =>
+      (a.role_target === 'all' || a.role_target === user.role)
+      && !excludedIds.has(a.id)
+    )
     .map(a => a.module_slug)
 }
 
 // Aggregate completion % across a user's required modules.
 // Reads `user.completions[slug]` — a field present on the mock user
 // records and on the rows returned by our members fetch.
-export function computeUserOverallPct(user, assignments) {
-  const slugs = computeUserSlugs(user, assignments)
+export function computeUserOverallPct(user, assignments, exclusions = []) {
+  const slugs = computeUserSlugs(user, assignments, exclusions)
   if (slugs.length === 0) return 0
   const total = slugs.reduce((acc, s) => acc + (user.completions?.[s] ?? 0), 0)
   return Math.round(total / slugs.length)

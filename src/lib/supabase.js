@@ -310,6 +310,74 @@ export async function deleteAssignment(assignmentId) {
   if (error) throw error
 }
 
+// ---------- Assignment exclusions ----------
+// Per-user exclusions on role-level assignments. Admin excludes a user
+// from an "everyone" or "all teachers" assignment; client filters those
+// assignments out when computing the user's module list. Table + RLS
+// live in supabase/migrations/assignment_exclusions.sql.
+//
+// The table is new, so we gracefully degrade if a deploy is ahead of
+// the migration: a "relation does not exist" error on read becomes an
+// empty list, matching the pattern used for is_active elsewhere.
+
+export async function getAssignmentExclusionsForSchool(schoolId) {
+  const { data, error } = await supabase
+    .from('assignment_exclusions')
+    .select(`
+      id,
+      assignment_id,
+      user_id,
+      excluded_by,
+      excluded_at,
+      assignments!inner ( school_id )
+    `)
+    .eq('assignments.school_id', schoolId)
+  if (error) {
+    if (/relation .*assignment_exclusions.* does not exist/i.test(error.message)) {
+      return []
+    }
+    throw error
+  }
+  // Strip the joined-table wrapper so consumers see a flat row shape.
+  return (data ?? []).map(({ assignments, ...row }) => row)
+}
+
+export async function getAssignmentExclusionsForUser(userId) {
+  const { data, error } = await supabase
+    .from('assignment_exclusions')
+    .select('id, assignment_id, user_id, excluded_by, excluded_at')
+    .eq('user_id', userId)
+  if (error) {
+    if (/relation .*assignment_exclusions.* does not exist/i.test(error.message)) {
+      return []
+    }
+    throw error
+  }
+  return data ?? []
+}
+
+export async function createAssignmentExclusion({ assignmentId, userId, excludedBy }) {
+  const { data, error } = await supabase
+    .from('assignment_exclusions')
+    .insert({
+      assignment_id: assignmentId,
+      user_id:       userId,
+      excluded_by:   excludedBy ?? null,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteAssignmentExclusion(exclusionId) {
+  const { error } = await supabase
+    .from('assignment_exclusions')
+    .delete()
+    .eq('id', exclusionId)
+  if (error) throw error
+}
+
 // ---------- Completions ----------
 
 export async function getCompletions(userId) {

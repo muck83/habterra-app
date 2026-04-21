@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { getAssignments, getCompletions, getUserQuizResponses } from '../lib/supabase'
+import { getAssignments, getAssignmentExclusionsForUser, getCompletions, getUserQuizResponses } from '../lib/supabase'
 import { MODULE_META } from '../data/mockData'
 import TopBar from '../components/TopBar'
 import ErrorState from '../components/ErrorState'
@@ -50,12 +50,14 @@ export default function Progress() {
       getAssignments(user.id, profile.school_id),
       getCompletions(user.id),
       getUserQuizResponses(user.id),
+      getAssignmentExclusionsForUser(user.id),
     ])
-      .then(([asgn, comp, quizResponses]) => {
+      .then(([asgn, comp, quizResponses, excl]) => {
         clearTimeout(timer)
         if (!active) return
         active = false
-        setAssignments(asgn)
+        const excludedIds = new Set((excl ?? []).map(e => e.assignment_id))
+        setAssignments(asgn.filter(a => !excludedIds.has(a.id)))
         const idx = {}
         comp.forEach(c => { idx[c.module_slug] = c })
         setCompletions(idx)
