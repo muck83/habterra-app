@@ -83,18 +83,18 @@ export default function Landing() {
           maxWidth: 820,
           margin: '24px auto 20px',
         }}>
-          Cultural readiness for international schools — <span style={{ color: 'var(--cal-teal)' }}>before</span> the first parent meeting.
+          The ground <span style={{ color: 'var(--cal-teal)' }}>before</span> the meeting.
         </h1>
 
         <p style={{
           fontSize: 18,
           lineHeight: 1.65,
           color: 'var(--cal-muted)',
-          maxWidth: 640,
+          maxWidth: 680,
           margin: '0 auto 40px',
         }}>
-          Habterra gives teachers the context families don't arrive with in English — the exam cultures,
-          family expectations, and unspoken rules behind every parent conversation.
+          For the teacher preparing to meet the family. For the family preparing to meet the school.
+          Cultural and curriculum context for international school communities — in the language each side thinks in.
         </p>
 
         <div style={{ display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -110,26 +110,23 @@ export default function Landing() {
             className="btn btn-ghost"
             style={{ padding: '14px 26px', fontSize: 15 }}
           >
-            Teacher sign-in →
+            Sign in →
           </Link>
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--cal-muted)', marginTop: 18, opacity: 0.75 }}>
+          Access is set up by your school. If you're a parent or teacher expecting an invite, check your school email.
         </div>
       </section>
 
-      {/* ── What it is ── */}
+      {/* ── Two sides of the conversation ── */}
       <section id="approach" style={{
-        maxWidth: 1000,
+        maxWidth: 1100,
         margin: '0 auto',
         padding: '60px 48px',
       }}>
-        <div style={{
-          background: '#fff',
-          borderRadius: 'var(--r-lg)',
-          padding: '56px 56px',
-          boxShadow: 'var(--shadow-sm)',
-          border: '1px solid var(--cal-border)',
-        }}>
+        <div style={{ textAlign: 'center', marginBottom: 40 }}>
           <div className="label-caps" style={{ color: 'var(--cal-amber)', fontSize: 11, letterSpacing: '0.14em', marginBottom: 14 }}>
-            What Habterra is
+            Two sides of the same conversation
           </div>
           <h2 style={{
             fontFamily: 'var(--font-display)',
@@ -137,34 +134,79 @@ export default function Landing() {
             fontWeight: 700,
             letterSpacing: '-0.02em',
             color: 'var(--cal-ink)',
-            marginBottom: 20,
+            marginBottom: 12,
             lineHeight: 1.2,
-          }}>
-            A professional development platform for schools with culturally diverse families.
-          </h2>
-          <div style={{
-            fontSize: 16,
-            lineHeight: 1.75,
-            color: 'var(--cal-ink-soft)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 16,
             maxWidth: 720,
+            margin: '0 auto',
           }}>
-            <p>
-              Your teachers work across eight curricula and twenty nationalities. Your parents bring
-              the expectations of the school systems that raised them — <em>gaokao</em>, CBSE,
-              <em> suneung</em>, <em> tawjihiyya</em> — and the norms around teacher authority,
-              family honour, and what "feedback" means.
+            Every parent–teacher meeting is a translation — often in both directions.
+          </h2>
+        </div>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
+          gap: 20,
+        }}>
+          {/* For teachers */}
+          <div style={{
+            background: '#fff',
+            borderRadius: 'var(--r-lg)',
+            padding: '36px 36px',
+            boxShadow: 'var(--shadow-sm)',
+            border: '1px solid var(--cal-border)',
+          }}>
+            <div className="label-caps" style={{ color: 'var(--cal-teal)', fontSize: 11, letterSpacing: '0.14em', marginBottom: 12 }}>
+              If you're a teacher
+            </div>
+            <h3 style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 22,
+              fontWeight: 700,
+              letterSpacing: '-0.015em',
+              color: 'var(--cal-ink)',
+              marginBottom: 16,
+              lineHeight: 1.3,
+            }}>
+              The interpretive move, before you need it.
+            </h3>
+            <p style={{ fontSize: 15, lineHeight: 1.7, color: 'var(--cal-ink-soft)' }}>
+              You're about to meet a family whose expectations were shaped by CBSE, <em>gaokao</em>,
+              <em> suneung</em>, or <em>tawjihiyya</em>. Habterra gives you the move that changes the
+              meeting: what "95% means nothing if someone got 97%" really means, why the question
+              about ranking is a question about investment, and how to run the conversation so both
+              sides leave heard.
             </p>
-            <p>
-              Habterra gives each teacher a short, country-specific module for the families in their
-              classroom: what those parents grew up believing about school, what they actually want
-              from the parent-teacher meeting, and where the cultural mismatches quietly happen.
-            </p>
-            <p>
-              Admins assign modules, track completion, and see where teacher understanding is weak
-              before it shows up as a parent complaint.
+          </div>
+
+          {/* For parents */}
+          <div style={{
+            background: '#fff',
+            borderRadius: 'var(--r-lg)',
+            padding: '36px 36px',
+            boxShadow: 'var(--shadow-sm)',
+            border: '1px solid var(--cal-border)',
+          }}>
+            <div className="label-caps" style={{ color: 'var(--cal-amber)', fontSize: 11, letterSpacing: '0.14em', marginBottom: 12 }}>
+              If you're a parent
+            </div>
+            <h3 style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 22,
+              fontWeight: 700,
+              letterSpacing: '-0.015em',
+              color: 'var(--cal-ink)',
+              marginBottom: 16,
+              lineHeight: 1.3,
+            }}>
+              A clear, honest guide — not a reassurance.
+            </h3>
+            <p style={{ fontSize: 15, lineHeight: 1.7, color: 'var(--cal-ink-soft)' }}>
+              You made a considered choice — often a brave one — to put your child in an international
+              school. Habterra answers the questions the school hasn't quite answered yet: what a score
+              of "5 out of 7" actually means, which universities recognize the credentials, and how the
+              pathway works for a child in your family's particular situation. In your language, from
+              your school.
             </p>
           </div>
         </div>
@@ -189,11 +231,13 @@ export default function Landing() {
             marginBottom: 14,
             lineHeight: 1.2,
           }}>
-            Built for the families on your roster.
+            Research-backed. Built for both sides of the table.
           </h2>
-          <p style={{ fontSize: 15, color: 'var(--cal-muted)', maxWidth: 560, margin: '0 auto', lineHeight: 1.6 }}>
-            Each module is delivered in English and the parent's language, so a teacher and parent
-            can cover the same ground.
+          <p style={{ fontSize: 15, color: 'var(--cal-muted)', maxWidth: 620, margin: '0 auto', lineHeight: 1.6 }}>
+            Each country module is delivered in English and in the family's language,
+            so teachers and parents can cover the same ground. Habterra also builds school-specific
+            guides — like Woodstock's parent-facing curriculum transition module — to support families
+            through bigger changes.
           </p>
         </div>
 
@@ -264,8 +308,16 @@ export default function Landing() {
         <div style={{ position: 'absolute', left: -80, bottom: -80, width: 320, height: 320, borderRadius: '50%', border: '1.5px solid rgba(255,255,255,0.06)' }} />
 
         <div style={{ maxWidth: 820, margin: '0 auto', position: 'relative', zIndex: 1, textAlign: 'center' }}>
-          <div style={{ fontSize: 48, color: 'var(--cal-amber)', lineHeight: 1, marginBottom: 20, fontFamily: 'var(--font-display)' }}>
-            "
+          <div style={{
+            fontSize: 11,
+            color: 'var(--cal-amber)',
+            letterSpacing: '0.16em',
+            textTransform: 'uppercase',
+            fontFamily: 'var(--font-display)',
+            fontWeight: 600,
+            marginBottom: 24,
+          }}>
+            From one side of the table
           </div>
           <blockquote style={{
             fontFamily: 'var(--font-display)',
@@ -312,9 +364,9 @@ export default function Landing() {
         }}>
           See Habterra in your school.
         </h2>
-        <p style={{ fontSize: 17, color: 'var(--cal-muted)', maxWidth: 560, margin: '0 auto 32px', lineHeight: 1.6 }}>
-          A 30-minute walkthrough with your PD coordinator. We'll map the modules to the families
-          on your roster and set up a pilot cohort.
+        <p style={{ fontSize: 17, color: 'var(--cal-muted)', maxWidth: 580, margin: '0 auto 32px', lineHeight: 1.6 }}>
+          A 30-minute walkthrough for your academic leadership team. We'll map the modules to the
+          families in your community and set up a pilot cohort.
         </p>
         <a
           href={`mailto:${DEMO_EMAIL}?subject=Habterra%20demo%20request&body=Hi%20%E2%80%94%20I%27d%20like%20to%20see%20Habterra%20for%20our%20school.%0A%0ASchool%3A%20%0ARole%3A%20%0ANumber%20of%20teachers%3A%20%0A`}
@@ -323,6 +375,19 @@ export default function Landing() {
         >
           Request a demo
         </a>
+        <div style={{
+          marginTop: 32,
+          paddingTop: 28,
+          borderTop: '1px solid var(--cal-border)',
+          fontSize: 14,
+          color: 'var(--cal-muted)',
+          lineHeight: 1.6,
+        }}>
+          Already invited by your school?{' '}
+          <Link to="/login" style={{ color: 'var(--cal-teal)', fontWeight: 600, textDecoration: 'none' }}>
+            Sign in →
+          </Link>
+        </div>
       </section>
 
       {/* ── Footer ── */}

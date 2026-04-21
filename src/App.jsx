@@ -52,7 +52,6 @@ function LoadingScreen() {
       background: 'var(--cal-off)',
     }}>
       <div style={{ textAlign: 'center' }}>
-        {/* Animated reticle */}
         <svg width="40" height="40" viewBox="0 0 40 40" fill="none" style={{ marginBottom: 16, opacity: 0.4, animation: 'spin 2s linear infinite' }}>
           <circle cx="20" cy="20" r="17" stroke="var(--cal-teal)" strokeWidth="2" />
           <line x1="20" y1="4"  x2="20" y2="11" stroke="var(--cal-teal)" strokeWidth="2" strokeLinecap="round" />
