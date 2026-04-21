@@ -61,7 +61,7 @@ export default function Login() {
         <div style={{ position: 'absolute', left: -80, bottom: -80, width: 340, height: 340, borderRadius: '50%', border: '1.5px solid rgba(255,255,255,0.06)' }} />
 
         {/* Logo */}
-        <Logo size="md" theme="dark" />
+        <Logo size="lg" theme="dark" />
 
         {/* Centre copy */}
         <div style={{ position: 'relative', zIndex: 1 }}>

@@ -4,6 +4,7 @@ export default function Logo({ size = 'md', theme = 'light', showTagline = false
     sm: { mark: 22, word: 18, tag: 10 },
     md: { mark: 32, word: 26, tag: 12 },
     lg: { mark: 48, word: 40, tag: 14 },
+    xl: { mark: 72, word: 56, tag: 18 },
   }
   const s = sizes[size] || sizes.md
 

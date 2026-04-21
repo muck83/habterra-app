@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import Landing        from './pages/Landing'
 import Login          from './pages/Login'
 import Dashboard      from './pages/Dashboard'
 import AdminDashboard from './pages/AdminDashboard'
@@ -76,7 +77,17 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          {/* Public */}
+          {/* Public — marketing landing page. Authed users get bounced
+              to /dashboard so a returning teacher never lands on the
+              marketing site. */}
+          <Route
+            path="/"
+            element={
+              <RedirectIfAuthed>
+                <Landing />
+              </RedirectIfAuthed>
+            }
+          />
           <Route
             path="/login"
             element={
@@ -140,8 +151,10 @@ export default function App() {
               </SuperAdminRoute>
             }
           />
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          {/* Fallback — send unknown paths back to the landing page.
+              RedirectIfAuthed there handles the authed case by bouncing
+              to /dashboard, so both audiences land somewhere sensible. */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         <DevBar />
       </BrowserRouter>
