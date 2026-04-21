@@ -6,7 +6,12 @@ import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-const MOCK_MODE   = !supabaseUrl
+// MOCK_MODE is explicit — set VITE_MOCK_MODE=true in .env to run the app
+// with the in-memory fixtures below instead of a real Supabase project.
+// A missing VITE_SUPABASE_URL no longer silently flips the app into
+// mock mode (that was a production footgun — a misconfigured deploy
+// would have booted with mock-admin as the default persona).
+const MOCK_MODE   = import.meta.env.VITE_MOCK_MODE === 'true'
 
 export const supabase = createClient(supabaseUrl ?? 'http://localhost', supabaseKey ?? 'anon')
 

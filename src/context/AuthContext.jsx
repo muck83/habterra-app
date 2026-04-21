@@ -2,11 +2,15 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase, getProfile } from '../lib/supabase'
 
 /* ─────────────────────────────────────────────────────────────
-   Mock session used when VITE_SUPABASE_URL is not yet set.
-   Lets the whole UI run without any credentials.
-   Set MOCK_MODE = false once Supabase is configured.
+   Mock session — used when VITE_MOCK_MODE=true. Lets the whole
+   UI run without any credentials.
+   This used to be inferred from a missing VITE_SUPABASE_URL, but
+   that meant a deploy that forgot the env var would silently boot
+   into mock mode with mock-admin as the default persona. The flag
+   is now explicit and a prod-build guard (main.jsx) throws if it
+   is ever true in a production build.
    ───────────────────────────────────────────────────────────── */
-const MOCK_MODE = !import.meta.env.VITE_SUPABASE_URL
+const MOCK_MODE = import.meta.env.VITE_MOCK_MODE === 'true'
 
 const MOCK_PROFILES = {
   teacher: {
