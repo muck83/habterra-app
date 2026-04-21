@@ -31,25 +31,22 @@ import {
   getActiveModuleSlugs, getSchoolStats, MOCK_SCHOOL,
 } from '../data/mockData'
 import ModulesView   from './admin/views/ModulesView'
+import OverviewView  from './admin/views/OverviewView'
 import AnalyticsView from './admin/views/AnalyticsView'
 import ActionsView   from './admin/views/ActionsView'
 import UsersView     from './admin/views/UsersView'
 import AssignView    from './admin/views/AssignView'
 import InviteView    from './admin/views/InviteView'
 import UserDetailModal from './admin/components/UserDetailModal'
+import AddMemberModal  from './admin/components/AddMemberModal'
 
 import {
   MOCK_MODE,
-  fmtDate,
-  daysUntil,
   isValidEmail,
   rowValidationError,
   parseInviteCsv,
   aggregateQuizAnalytics,
 } from './admin/utils'
-import StatCard       from './admin/components/StatCard'
-import CompletionCell from './admin/components/CompletionCell'
-
 /* ── Main component ── */
 
 export default function AdminDashboard() {
@@ -1139,271 +1136,18 @@ export default function AdminDashboard() {
 
           {/* ════════════════ OVERVIEW ════════════════ */}
           {adminView === 'overview' && (
-            <>
-              {/* Header */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
-                <div>
-                  <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 22, fontWeight: 700, color: 'var(--cal-ink)', marginBottom: 4 }}>
-                    {MOCK_SCHOOL.name}
-                  </h2>
-                  <div style={{ fontSize: 13, color: 'var(--cal-muted)' }}>
-                    School dashboard · {stats.teacherCount} teachers · {stats.parentCount} parents
-                  </div>
-                </div>
-                <button
-                  className="btn btn-primary"
-                  onClick={() => setAdminView('assign')}
-                  style={{ fontSize: 13, padding: '10px 18px' }}
-                >
-                  + Assign module
-                </button>
-              </div>
-
-              {/* First-run primer — what Habterra is and isn't */}
-              {!primerDismissed && (
-                <div style={{
-                  background: 'linear-gradient(135deg, var(--cal-teal-lt) 0%, #fff 70%)',
-                  border: '1.5px solid var(--cal-teal)',
-                  borderRadius: 'var(--r-lg)',
-                  padding: '18px 22px',
-                  marginBottom: 24,
-                  position: 'relative',
-                }}>
-                  <button
-                    type="button"
-                    onClick={dismissPrimer}
-                    aria-label="Dismiss"
-                    style={{
-                      position: 'absolute', top: 10, right: 12,
-                      background: 'transparent', border: 'none', cursor: 'pointer',
-                      fontSize: 18, color: 'var(--cal-muted)', lineHeight: 1,
-                      padding: 4,
-                    }}
-                  >×</button>
-                  <div style={{
-                    fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 700,
-                    letterSpacing: '0.1em', color: 'var(--cal-teal)', marginBottom: 8,
-                  }}>
-                    HABTERRA IS NOT AN LMS
-                  </div>
-                  <div style={{ fontSize: 14, color: 'var(--cal-ink)', lineHeight: 1.6, marginBottom: 10, maxWidth: 720 }}>
-                    Habterra is a <strong>frame-sharpening tool</strong> for parent conversations — not a course library and not a compliance tracker. Each module is 60–90 minutes of short scenarios anchored in research (Hattie, EEF, Schaverien, Kim et al.) that give teachers a shared vocabulary before parent season.
-                  </div>
-                  <div style={{ fontSize: 13, color: 'var(--cal-ink-soft)', lineHeight: 1.6, maxWidth: 720 }}>
-                    Use the <strong>Action Queue</strong> to see where teachers are struggling in real time, and <strong>Quiz Analytics</strong> to pull one insight into your next staff meeting. The rollout script in the module guide handles the T-7 to T+14 sequence so you don't have to invent it.
-                  </div>
-                  <button
-                    type="button"
-                    onClick={dismissPrimer}
-                    style={{
-                      marginTop: 14,
-                      fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 600,
-                      background: 'var(--cal-teal)', color: '#fff', border: 'none',
-                      borderRadius: 'var(--r-md)', padding: '8px 16px', cursor: 'pointer',
-                    }}
-                  >
-                    Got it — don't show this again
-                  </button>
-                </div>
-              )}
-
-              {/* Stats row */}
-              <div style={{ display: 'flex', gap: 16, marginBottom: 32 }}>
-                <StatCard value={stats.teacherCount}    label="Teachers"         sub="enrolled"                           accent="var(--cal-teal)" />
-                <StatCard value={stats.parentCount}     label="Parents"          sub="enrolled"                           accent="#7B5EA7" />
-                <StatCard value={`${stats.completionRate}%`} label="Completion rate" sub="across all assigned modules"   accent="var(--cal-amber)" />
-                <StatCard value={assignments.length}    label="Active modules"   sub="assigned this term"                 accent="#43A047" />
-              </div>
-
-              {/* Role filter tabs */}
-              <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
-                {['all', 'teacher', 'parent'].map(f => (
-                  <button
-                    key={f}
-                    onClick={() => setRoleFilter(f)}
-                    style={{
-                      fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 600,
-                      padding: '6px 14px', borderRadius: 'var(--r-full)',
-                      border: '1.5px solid',
-                      borderColor: roleFilter === f ? 'var(--cal-teal)' : 'var(--cal-border)',
-                      background: roleFilter === f ? 'var(--cal-teal)' : 'transparent',
-                      color: roleFilter === f ? '#fff' : 'var(--cal-muted)',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    {f === 'all' ? 'All members' : f === 'teacher' ? 'Teachers' : 'Parents'}
-                  </button>
-                ))}
-              </div>
-
-              {/* Completion matrix */}
-              <div style={{ background: '#fff', borderRadius: 'var(--r-lg)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden', marginBottom: 28 }}>
-                <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--cal-border-lt)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 600, color: 'var(--cal-ink)' }}>
-                    Completion matrix
-                  </div>
-                  <div className="label-caps">
-                    {visibleUsers.length} member{visibleUsers.length !== 1 ? 's' : ''}
-                  </div>
-                </div>
-
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 500 }}>
-                    <thead>
-                      <tr style={{ background: 'var(--cal-surface)' }}>
-                        <th style={{ textAlign: 'left', padding: '10px 20px', fontSize: 11, fontWeight: 600, color: 'var(--cal-muted)', fontFamily: 'var(--font-display)', letterSpacing: '0.06em', borderBottom: '1px solid var(--cal-border-lt)', minWidth: 180 }}>
-                          Member
-                        </th>
-                        <th style={{ textAlign: 'center', padding: '10px 8px', fontSize: 11, fontWeight: 600, color: 'var(--cal-muted)', fontFamily: 'var(--font-display)', letterSpacing: '0.06em', borderBottom: '1px solid var(--cal-border-lt)', minWidth: 80 }}>
-                          Overall
-                        </th>
-                        {activeSlugs.map(slug => (
-                          <th key={slug} style={{ textAlign: 'center', padding: '10px 8px', fontSize: 11, fontWeight: 600, color: 'var(--cal-muted)', fontFamily: 'var(--font-display)', borderBottom: '1px solid var(--cal-border-lt)', minWidth: 100 }}>
-                            {MODULE_META[slug]?.flag} {MODULE_META[slug]?.label?.replace('Understand ', '') ?? slug}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {visibleUsers.map((user, i) => {
-                        const overallPct = userOverallPct(user)
-                        const slugsForUser = userSlugs(user)
-                        return (
-                          <tr
-                            key={user.id}
-                            style={{
-                              background: i % 2 === 0 ? '#fff' : 'var(--cal-surface)',
-                              cursor: 'pointer',
-                              transition: 'background 0.1s',
-                            }}
-                            onMouseEnter={e => e.currentTarget.style.background = 'var(--cal-teal-lt)'}
-                            onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? '#fff' : 'var(--cal-surface)'}
-                            onClick={() => setSelectedUser(user)}
-                          >
-                            {/* Name + role */}
-                            <td style={{ padding: '10px 20px', borderBottom: '1px solid var(--cal-border-lt)' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <div style={{
-                                  width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
-                                  background: user.role === 'teacher' ? 'var(--cal-teal-lt)' : '#EDE7F6',
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                  fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 700,
-                                  color: user.role === 'teacher' ? 'var(--cal-teal)' : '#7B5EA7',
-                                }}>
-                                  {user.full_name.split(' ').map(n => n[0]).join('').slice(0, 2)}
-                                </div>
-                                <div>
-                                  <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--cal-ink)' }}>{user.full_name}</div>
-                                  <div style={{ fontSize: 10, color: 'var(--cal-muted)', textTransform: 'capitalize' }}>{user.role}</div>
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* Overall % */}
-                            <td style={{ textAlign: 'center', padding: '10px 8px', borderBottom: '1px solid var(--cal-border-lt)' }}>
-                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                                <div style={{
-                                  fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 700,
-                                  color: overallPct >= 80 ? 'var(--cal-success)' : overallPct > 0 ? 'var(--cal-amber-dark)' : 'var(--cal-muted)',
-                                }}>
-                                  {overallPct}%
-                                </div>
-                                <div className="progress-track" style={{ width: 40, height: 3 }}>
-                                  <div
-                                    className={`progress-fill ${overallPct >= 80 ? 'green' : 'amber'}`}
-                                    style={{ width: `${overallPct}%` }}
-                                  />
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* Per-module cells */}
-                            {activeSlugs.map(slug => {
-                              const assigned = slugsForUser.includes(slug)
-                              return assigned
-                                ? <CompletionCell key={slug} pct={user.completions[slug] ?? 0} />
-                                : <CompletionCell key={slug} pct={undefined} />
-                            })}
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Legend */}
-                <div style={{ padding: '12px 20px', borderTop: '1px solid var(--cal-border-lt)', display: 'flex', gap: 20, alignItems: 'center' }}>
-                  <span className="label-caps">Legend</span>
-                  {[
-                    { symbol: '✓', bg: 'var(--cal-success-lt)', color: 'var(--cal-success)', label: 'Complete (≥80%)' },
-                    { symbol: '%', bg: 'var(--cal-amber-lt)',   color: 'var(--cal-amber-dark)', label: 'In progress' },
-                    { symbol: '○', bg: 'var(--cal-border-lt)', color: 'var(--cal-border)', label: 'Not started' },
-                    { symbol: '—', bg: 'transparent',          color: '#C8C4BE', label: 'Not assigned' },
-                  ].map(l => (
-                    <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--cal-muted)' }}>
-                      <div style={{ width: 18, height: 18, borderRadius: '50%', background: l.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: l.color, fontWeight: 700 }}>
-                        {l.symbol}
-                      </div>
-                      {l.label}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Assignment schedule */}
-              <div style={{ background: '#fff', borderRadius: 'var(--r-lg)', boxShadow: 'var(--shadow-sm)', overflow: 'hidden' }}>
-                <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--cal-border-lt)' }}>
-                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 600, color: 'var(--cal-ink)' }}>
-                    Current assignments
-                  </div>
-                </div>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ background: 'var(--cal-surface)' }}>
-                      {['Module', 'Assigned to', 'Due date', 'Status'].map(h => (
-                        <th key={h} style={{ textAlign: 'left', padding: '9px 20px', fontSize: 10, fontWeight: 600, color: 'var(--cal-muted)', fontFamily: 'var(--font-display)', letterSpacing: '0.08em', textTransform: 'uppercase', borderBottom: '1px solid var(--cal-border-lt)' }}>
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {assignments.map((a, i) => {
-                      const meta  = MODULE_META[a.module_slug]
-                      const days  = daysUntil(a.due_date)
-                      const urgent = days !== null && days <= 7 && days >= 0
-                      const overdue = days !== null && days < 0
-                      return (
-                        <tr key={a.id} style={{ background: i % 2 === 0 ? '#fff' : 'var(--cal-surface)' }}>
-                          <td style={{ padding: '12px 20px', fontSize: 13, borderBottom: '1px solid var(--cal-border-lt)' }}>
-                            <span style={{ marginRight: 8 }}>{meta?.flag}</span>
-                            <span style={{ fontWeight: 500 }}>{meta?.label ?? a.module_slug}</span>
-                          </td>
-                          <td style={{ padding: '12px 20px', fontSize: 13, color: 'var(--cal-muted)', borderBottom: '1px solid var(--cal-border-lt)', textTransform: 'capitalize' }}>
-                            {a.role_target === 'all' ? 'Everyone' : a.role_target + 's'}
-                          </td>
-                          <td style={{ padding: '12px 20px', fontSize: 13, borderBottom: '1px solid var(--cal-border-lt)' }}>
-                            {a.due_date ? (
-                              <span style={{ color: overdue ? '#C62828' : urgent ? 'var(--cal-amber-dark)' : 'var(--cal-ink)' }}>
-                                {fmtDate(a.due_date)}
-                                {overdue && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 600 }}>(overdue)</span>}
-                                {urgent  && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 600 }}>({days}d)</span>}
-                              </span>
-                            ) : '—'}
-                          </td>
-                          <td style={{ padding: '12px 20px', borderBottom: '1px solid var(--cal-border-lt)' }}>
-                            <span className={`badge ${overdue ? 'badge-soon' : 'badge-assigned'}`} style={overdue ? { background: '#FFEBEE', color: '#C62828' } : {}}>
-                              {overdue ? 'Overdue' : 'Active'}
-                            </span>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </>
+            <OverviewView
+              stats={stats}
+              activeSlugs={activeSlugs}
+              visibleUsers={visibleUsers}
+              assignments={assignments}
+              roleFilter={roleFilter}
+              setRoleFilter={setRoleFilter}
+              setAdminView={setAdminView}
+              setSelectedUser={setSelectedUser}
+              primerDismissed={primerDismissed}
+              dismissPrimer={dismissPrimer}
+            />
           )}
 
           {/* ════════════════ MEMBERS ════════════════ */}
@@ -1547,235 +1291,17 @@ export default function AdminDashboard() {
 
       {/* ════════════════ ADD NEW MEMBER MODAL ════════════════ */}
       {addMemberOpen && (
-        <div
-          onClick={closeAddMember}
-          style={{
-            position: 'fixed', inset: 0,
-            background: 'rgba(0,0,0,0.45)',
-            display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-            padding: '60px 20px 20px', zIndex: 1000, overflowY: 'auto',
-          }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: '#fff', borderRadius: 'var(--r-lg)',
-              maxWidth: 560, width: '100%',
-              boxShadow: 'var(--shadow-lg)',
-              padding: 28,
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 }}>
-              <div>
-                <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700, color: 'var(--cal-ink)', marginBottom: 4 }}>
-                  Add new member
-                </h3>
-                <p style={{ fontSize: 12, color: 'var(--cal-muted)' }}>
-                  Invite a teacher, parent, or admin and optionally pre-assign modules.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closeAddMember}
-                aria-label="Close"
-                style={{ border: 'none', background: 'transparent', fontSize: 22, color: 'var(--cal-muted)', cursor: 'pointer', lineHeight: 1 }}
-              >×</button>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--cal-ink-soft)', marginBottom: 5 }}>
-                  Full name
-                </label>
-                <input
-                  className="input"
-                  type="text"
-                  value={addMemberForm.fullName}
-                  onChange={e => setAddMemberForm(f => ({ ...f, fullName: e.target.value }))}
-                  placeholder="e.g. Eric Schoonard"
-                  style={{ width: '100%' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--cal-ink-soft)', marginBottom: 5 }}>
-                  Email
-                </label>
-                <input
-                  className="input"
-                  type="email"
-                  value={addMemberForm.email}
-                  onChange={e => setAddMemberForm(f => ({ ...f, email: e.target.value }))}
-                  placeholder="name@school.org"
-                  style={{ width: '100%' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--cal-ink-soft)', marginBottom: 5 }}>
-                  Role
-                </label>
-                <select
-                  value={addMemberForm.role}
-                  onChange={e => setAddMemberForm(f => ({ ...f, role: e.target.value }))}
-                  style={{
-                    width: '100%', padding: '9px 12px', fontSize: 13,
-                    border: '1.5px solid var(--cal-border)', borderRadius: 'var(--r-sm)',
-                    background: '#fff', cursor: 'pointer',
-                  }}
-                >
-                  <option value="teacher">Teacher</option>
-                  <option value="parent">Parent</option>
-                  <option value="admin">Admin</option>
-                  {isSuperAdmin && <option value="superadmin">Superadmin</option>}
-                </select>
-              </div>
-
-              {/* Admin-set initial password (optional). Setting one skips the
-                  invite email — the admin hands the password over out-of-band. */}
-              <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--cal-ink-soft)', marginBottom: 5 }}>
-                  Initial password <span style={{ color: 'var(--cal-muted)', fontWeight: 500 }}>(optional)</span>
-                </label>
-                <input
-                  className="input"
-                  type="text"
-                  autoComplete="new-password"
-                  value={addMemberForm.initialPassword}
-                  onChange={e => setAddMemberForm(f => ({ ...f, initialPassword: e.target.value }))}
-                  placeholder="Leave blank to send an invite email"
-                  style={{ width: '100%' }}
-                />
-                <div style={{ fontSize: 10, color: 'var(--cal-muted)', marginTop: 4, lineHeight: 1.5 }}>
-                  Set a password to create the account silently (no invite email). Min 8 chars.
-                  The user can sign in immediately and change it later from their profile,
-                  or you can trigger a reset link from their detail panel.
-                </div>
-              </div>
-
-              {/* Send-invite toggle. Forced off when an initial password is set. */}
-              <div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--cal-ink)', cursor: addMemberForm.initialPassword ? 'not-allowed' : 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={!addMemberForm.initialPassword && addMemberForm.sendEmail !== false}
-                    onChange={e => setAddMemberForm(f => ({ ...f, sendEmail: e.target.checked }))}
-                    disabled={!!addMemberForm.initialPassword}
-                    style={{ cursor: addMemberForm.initialPassword ? 'not-allowed' : 'pointer' }}
-                  />
-                  <span>Send Supabase invite email</span>
-                </label>
-                <div style={{ fontSize: 10, color: 'var(--cal-muted)', marginTop: 4, marginLeft: 24 }}>
-                  {addMemberForm.initialPassword
-                    ? 'Disabled — silent create (password above) skips the email.'
-                    : 'Uncheck to create the account without emailing the user.'}
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--cal-ink-soft)', marginBottom: 8 }}>
-                  Modules to auto-assign <span style={{ color: 'var(--cal-muted)', fontWeight: 500 }}>(optional)</span>
-                </label>
-                <div style={{
-                  border: '1px solid var(--cal-border-lt)', borderRadius: 'var(--r-sm)',
-                  maxHeight: 200, overflowY: 'auto',
-                }}>
-                  {Object.entries(MODULE_META).map(([slug, m], i, arr) => {
-                    const checked = slug in addMemberForm.selectedModules
-                    return (
-                      <div key={slug} style={{
-                        display: 'flex', alignItems: 'center', gap: 10,
-                        padding: '8px 12px',
-                        borderBottom: i < arr.length - 1 ? '1px solid var(--cal-border-lt)' : 'none',
-                        background: checked ? 'var(--cal-teal-lt)' : 'transparent',
-                      }}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleAddMemberModule(slug)}
-                          style={{ cursor: 'pointer' }}
-                        />
-                        <div style={{ flex: 1, fontSize: 12 }}>
-                          <span>{m.flag} {m.label?.replace('Understand ', '') ?? slug}</span>
-                        </div>
-                        {checked && (
-                          <input
-                            type="date"
-                            value={addMemberForm.selectedModules[slug] ?? ''}
-                            onChange={e => setAddMemberModuleDue(slug, e.target.value)}
-                            style={{
-                              fontSize: 11, padding: '4px 6px',
-                              border: '1px solid var(--cal-border)', borderRadius: 'var(--r-sm)',
-                            }}
-                            title="Due date (optional)"
-                          />
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, fontFamily: 'var(--font-display)', color: 'var(--cal-ink-soft)', marginBottom: 5 }}>
-                  Welcome message <span style={{ color: 'var(--cal-muted)', fontWeight: 500 }}>(optional)</span>
-                </label>
-                <textarea
-                  value={addMemberForm.welcomeMessage}
-                  onChange={e => setAddMemberForm(f => ({ ...f, welcomeMessage: e.target.value }))}
-                  placeholder="Short note that goes out with the invite email."
-                  rows={3}
-                  style={{
-                    width: '100%', padding: '9px 12px', fontSize: 13,
-                    border: '1.5px solid var(--cal-border)', borderRadius: 'var(--r-sm)',
-                    fontFamily: 'inherit', resize: 'vertical',
-                  }}
-                />
-                <div style={{ fontSize: 10, color: 'var(--cal-muted)', marginTop: 4 }}>
-                  Passed to the invite edge function as <code>welcome_message</code>; ignored until the backend surfaces it.
-                </div>
-              </div>
-
-              {addMemberError && (
-                <div style={{
-                  padding: '9px 12px',
-                  background: '#FFF4E5',
-                  border: '1px solid #F5C27A',
-                  borderRadius: 'var(--r-sm)',
-                  fontSize: 12,
-                  color: '#8A5A14',
-                }}>
-                  {addMemberError}
-                </div>
-              )}
-
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 6 }}>
-                <button
-                  type="button"
-                  onClick={closeAddMember}
-                  className="btn btn-ghost"
-                  disabled={addMemberSaving}
-                  style={{ fontSize: 13, padding: '9px 18px' }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleAddMember}
-                  className="btn"
-                  disabled={addMemberSaving}
-                  style={{
-                    fontSize: 13, padding: '9px 20px',
-                    background: 'var(--cal-teal)', color: '#fff',
-                    opacity: addMemberSaving ? 0.7 : 1,
-                  }}
-                >
-                  {addMemberSaving ? 'Adding…' : 'Add member'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <AddMemberModal
+          addMemberForm={addMemberForm}
+          setAddMemberForm={setAddMemberForm}
+          addMemberSaving={addMemberSaving}
+          addMemberError={addMemberError}
+          closeAddMember={closeAddMember}
+          toggleAddMemberModule={toggleAddMemberModule}
+          setAddMemberModuleDue={setAddMemberModuleDue}
+          handleAddMember={handleAddMember}
+          isSuperAdmin={isSuperAdmin}
+        />
       )}
     </div>
   )
