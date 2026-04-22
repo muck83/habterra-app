@@ -24,6 +24,7 @@ import {
   upsertCompletion,
   upsertGradeOverride,
   getSchoolMembers,
+  getSchoolAssignments,
   updateMemberProfile,
   setUserActive,
   getAllSchools,
@@ -272,6 +273,21 @@ export default function AdminDashboard() {
         setMembersError(err?.message ?? 'Failed to load members.')
         setMembersLoading(false)
       })
+    return () => { active = false }
+  }, [profile?.school_id, membersRefreshKey])
+
+  // Load real school assignments in production. Without this the admin
+  // dashboard only ever sees MOCK_ASSIGNMENTS plus whatever was added
+  // during the current session, which means duplicates created directly
+  // in the DB never surface in the roster modal and can't be removed.
+  useEffect(() => {
+    if (MOCK_MODE) return
+    const schoolId = profile?.school_id
+    if (!schoolId) return
+    let active = true
+    getSchoolAssignments(schoolId)
+      .then(rows => { if (active) setAssignments(rows) })
+      .catch(err => console.warn('[admin assignments fetch] failed:', err))
     return () => { active = false }
   }, [profile?.school_id, membersRefreshKey])
 

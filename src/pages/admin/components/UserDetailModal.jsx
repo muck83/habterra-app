@@ -88,6 +88,12 @@ export default function UserDetailModal({
           width: '100%',
           maxWidth: 520,
           margin: '20px',
+          // Cap at viewport height and scroll the body instead of letting
+          // the modal grow past the fold. The header stays pinned so the
+          // user always sees who they're editing.
+          maxHeight: 'calc(100vh - 40px)',
+          display: 'flex',
+          flexDirection: 'column',
           overflow: 'hidden',
         }}
       >
@@ -98,6 +104,7 @@ export default function UserDetailModal({
           display: 'flex',
           alignItems: 'center',
           gap: 14,
+          flexShrink: 0,
         }}>
           <div style={{
             width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
@@ -168,7 +175,7 @@ export default function UserDetailModal({
         </div>
 
         {/* Modal body */}
-        <div style={{ padding: '22px 26px' }}>
+        <div style={{ padding: '22px 26px', overflowY: 'auto', flex: 1 }}>
 
           {resetStatus.status !== 'idle' && resetStatus.status !== 'sending' && (
             <div style={{
