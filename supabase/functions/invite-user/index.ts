@@ -1,4 +1,9 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+// Pinned to a recent @supabase/supabase-js version that bundles a gotrue-js
+// which understands ES256-signed access tokens. Supabase rotated projects to
+// asymmetric JWT keys; older supabase-js bundles threw
+// "UNAUTHORIZED_UNSUPPORTED_TOKEN_ALGORITHM: Unsupported JWT algorithm ES256"
+// on supabase.auth.getUser() when the caller's token used the new algorithm.
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.8'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

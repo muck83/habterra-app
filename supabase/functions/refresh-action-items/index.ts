@@ -1,4 +1,7 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+// Pinned to @2.49.8 — needed for ES256 asymmetric-JWT support on projects
+// that have rotated to Supabase's new key format. Older bundles threw
+// "UNAUTHORIZED_UNSUPPORTED_TOKEN_ALGORITHM" on supabase.auth.getUser().
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.8'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
