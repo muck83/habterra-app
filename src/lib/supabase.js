@@ -277,10 +277,19 @@ export async function getProfile(userId) {
 // ---------- Assignments ----------
 
 export async function getAssignments(userId, schoolId) {
+  // Build the filter dynamically — if schoolId is missing (e.g. a parent
+  // whose profile hasn't been linked to a school yet), skip the school-wide
+  // branch instead of interpolating the literal string "null" into a uuid
+  // filter, which crashes the whole query with "invalid input syntax for
+  // type uuid: null" and hides any per-user assignments too.
+  const filters = [`user_id.eq.${userId}`]
+  if (schoolId) {
+    filters.push(`and(school_id.eq.${schoolId},user_id.is.null)`)
+  }
   const { data, error } = await supabase
     .from('assignments')
     .select('*')
-    .or(`user_id.eq.${userId},and(school_id.eq.${schoolId},user_id.is.null)`)
+    .or(filters.join(','))
     .order('due_date', { ascending: true, nullsFirst: false })
   if (error) throw error
   return data ?? []

@@ -1931,7 +1931,7 @@ export default function WoodstockModuleView() {
 
         {/* Hero banner */}
         <div style={{
-          background: `linear-gradient(135deg, ${WS} 0%, #3D2470 100%)`,
+          background: `linear-gradient(135deg, ${WS} 0%, #4A1C1B 100%)`,
           color: '#fff', padding: '36px 48px 30px',
           position: 'relative', overflow: 'hidden',
         }}>
