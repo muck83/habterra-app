@@ -1,0 +1,17 @@
+# Supabase CLI project config.
+#
+# Edge Function settings. verify_jwt is set to false because Supabase rotated
+# this project to asymmetric (ES256) API keys, and the edge gateway's
+# built-in JWT verifier rejects those tokens with
+# "UNAUTHORIZED_UNSUPPORTED_TOKEN_ALGORITHM: Unsupported JWT algorithm ES256".
+#
+# Turning off gateway verification is safe for these functions — each
+# function validates the caller's bearer token itself by calling
+# supabase.auth.getUser(token), which hits gotrue and understands the new
+# algorithm.
+
+[functions.invite-user]
+verify_jwt = false
+
+[functions.refresh-action-items]
+verify_jwt = false
