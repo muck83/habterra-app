@@ -158,11 +158,64 @@ Deno.serve(async req => {
       .eq('id', batchRowId)
   }
 
+  // --- look up any existing auth row for this email so we can reactivate
+  // soft-deleted members instead of failing with "already registered". We
+  // page through auth.admin.listUsers because Supabase has no direct
+  // "get by email" admin endpoint. Typical schools have < 200 users so
+  // one or two pages is usually enough.
+  async function findExistingAuthUser(target: string): Promise<{ id: string } | null> {
+    for (let page = 1; page <= 20; page++) {
+      const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 200 })
+      if (error) throw error
+      const hit = data?.users?.find(u => (u.email ?? '').toLowerCase() === target)
+      if (hit) return { id: hit.id }
+      if (!data || data.users.length < 200) return null
+    }
+    return null
+  }
+
   // --- create or invite the user ---
   try {
     let userId: string
+    let reactivated = false
+    const existing = await findExistingAuthUser(email)
 
-    if (skipEmail) {
+    if (existing) {
+      // Reactivation path — auth row survived a soft-delete. Update the
+      // auth row (password + email_confirm if the admin set a password)
+      // and upsert the profile to is_active=true with the new role /
+      // school / name. This lets admins re-onboard a former member with
+      // one click instead of getting stuck on "already registered".
+      userId = existing.id
+      reactivated = true
+
+      if (adminPassword) {
+        const { error: updateAuthError } = await supabase.auth.admin.updateUserById(userId, {
+          password: adminPassword,
+          email_confirm: true,
+          user_metadata: {
+            full_name: fullName,
+            role,
+            school_id: schoolId,
+            admin_set_password: true,
+            reactivated: true,
+          },
+        })
+        if (updateAuthError) throw updateAuthError
+      } else if (!skipEmail) {
+        // No password provided and admin wants an email — send a
+        // password-reset so the returning user can set a fresh password.
+        const redirectTo = Deno.env.get('SITE_URL')
+          ? `${Deno.env.get('SITE_URL')}/login?recovery=1`
+          : undefined
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo,
+        })
+        // Non-fatal: even if the email fails we still reactivate the
+        // profile. Admin can re-trigger reset from the dashboard.
+        if (resetError) console.warn('resetPasswordForEmail on reactivate failed:', resetError.message)
+      }
+    } else if (skipEmail) {
       // Silent create: no invite email. Uses the admin-provided password
       // when set; otherwise a random temp password (admin can then trigger
       // a password reset from the dashboard or via the UI).
@@ -197,16 +250,31 @@ Deno.serve(async req => {
     }
 
     // --- upsert profile so the member shows in the roster immediately ---
-    const { error: upsertError } = await supabase
+    // Also clear is_active / deactivated_* on reactivation so the soft-
+    // deleted row flips back to active. We try the full column set first
+    // and fall back to the minimal set if the deactivation migration
+    // hasn't been applied in this project (PostgREST returns 42703 for
+    // missing columns).
+    const fullProfile = {
+      id: userId,
+      email,
+      full_name: fullName,
+      role,
+      school_id: schoolId,
+      is_active: true,
+      deactivated_at: null,
+      deactivated_by: null,
+    }
+    let { error: upsertError } = await supabase
       .from('profiles')
-      .upsert({
-        id: userId,
-        email,
-        full_name: fullName,
-        role,
-        school_id: schoolId,
-      }, { onConflict: 'id' })
+      .upsert(fullProfile, { onConflict: 'id' })
 
+    if (upsertError && /column .*(is_active|deactivated).* does not exist/i.test(upsertError.message ?? '')) {
+      // Migration not applied — fall back to the legacy column set.
+      const legacy = { id: userId, email, full_name: fullName, role, school_id: schoolId }
+      const retry = await supabase.from('profiles').upsert(legacy, { onConflict: 'id' })
+      upsertError = retry.error
+    }
     if (upsertError) throw upsertError
 
     if (batchRowId) {
@@ -219,7 +287,7 @@ Deno.serve(async req => {
     }
 
     // Support both response shapes; clients check user_id (snake) or userId (camel).
-    return json({ userId, user_id: userId, skipped_email: skipEmail, ok: true })
+    return json({ userId, user_id: userId, skipped_email: skipEmail, reactivated, ok: true })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Invitation failed.'
     await failRow(supabase, batchRowId, message)
