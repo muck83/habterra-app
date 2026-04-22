@@ -38,6 +38,21 @@ function SuperAdminRoute({ children }) {
 function RedirectIfAuthed({ children }) {
   const { session, loading } = useAuth()
   if (loading)  return <LoadingScreen />
+  // Exception: don't redirect when /login is handling a password-recovery
+  // or invite callback — Supabase-js creates a session from the hash, and
+  // if we bounce on session-present the user never sees the "set your
+  // password" form. Login.jsx's recovery mode owns these URLs.
+  if (session && typeof window !== 'undefined') {
+    const hash   = window.location.hash
+    const search = window.location.search
+    const isRecoveryCallback =
+      hash.includes('type=recovery') ||
+      hash.includes('type=invite')   ||
+      hash.includes('type=signup')   ||
+      hash.includes('access_token=') ||
+      search.includes('recovery=1')
+    if (isRecoveryCallback) return children
+  }
   if (session)  return <Navigate to="/dashboard" replace />
   return children
 }
