@@ -19,7 +19,18 @@ const MOCK_PROFILES = {
     full_name: 'Sarah Chen',
     role: 'teacher',
     school_id: 'school-nlis',
-    school: { id: 'school-nlis', name: 'NLIS Riyadh', domain: 'nlis.edu.sa' },
+    school: {
+      id: 'school-nlis',
+      name: 'NLIS Riyadh',
+      domain: 'nlis.edu.sa',
+      // Branding fields populated by supabase/school_branding.sql in real DB.
+      // Mirrored in mock mode so the topbar renders the same co-branded
+      // wordmark + "Powered by Habterra" attribution as production.
+      display_name: 'NLIS Riyadh',
+      short_name:   'NLIS',
+      tagline:      'Parent & Teacher Companion',
+      logo_url:     null,
+    },
   },
   admin: {
     id: 'mock-admin',
@@ -27,7 +38,18 @@ const MOCK_PROFILES = {
     full_name: 'PD Coordinator',
     role: 'admin',
     school_id: 'school-nlis',
-    school: { id: 'school-nlis', name: 'NLIS Riyadh', domain: 'nlis.edu.sa' },
+    school: {
+      id: 'school-nlis',
+      name: 'NLIS Riyadh',
+      domain: 'nlis.edu.sa',
+      // Branding fields populated by supabase/school_branding.sql in real DB.
+      // Mirrored in mock mode so the topbar renders the same co-branded
+      // wordmark + "Powered by Habterra" attribution as production.
+      display_name: 'NLIS Riyadh',
+      short_name:   'NLIS',
+      tagline:      'Parent & Teacher Companion',
+      logo_url:     null,
+    },
   },
   parent: {
     id: 'mock-parent',
@@ -35,7 +57,18 @@ const MOCK_PROFILES = {
     full_name: 'Li Wei',
     role: 'parent',
     school_id: 'school-nlis',
-    school: { id: 'school-nlis', name: 'NLIS Riyadh', domain: 'nlis.edu.sa' },
+    school: {
+      id: 'school-nlis',
+      name: 'NLIS Riyadh',
+      domain: 'nlis.edu.sa',
+      // Branding fields populated by supabase/school_branding.sql in real DB.
+      // Mirrored in mock mode so the topbar renders the same co-branded
+      // wordmark + "Powered by Habterra" attribution as production.
+      display_name: 'NLIS Riyadh',
+      short_name:   'NLIS',
+      tagline:      'Parent & Teacher Companion',
+      logo_url:     null,
+    },
   },
   superadmin: {
     id: 'mock-superadmin',

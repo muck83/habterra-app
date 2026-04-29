@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { signIn, resetPasswordForEmail, updateMyPassword, supabase } from '../lib/supabase'
 import Logo from '../components/Logo'
+import { fromUrl, fromMemo, byDomain, emailDomain, memoize } from '../lib/schoolBranding'
 
 export default function Login() {
   const navigate              = useNavigate()
@@ -21,6 +22,13 @@ export default function Login() {
   const [newPass,       setNewPass]       = useState('')
   const [newPass2,      setNewPass2]      = useState('')
   const [recoverySaved, setRecoverySaved] = useState(false)
+
+  // School-aware branding — see src/lib/schoolBranding.js for detection rules.
+  // Initial value: ?school=<slug> in the URL > localStorage memo > null.
+  // Re-derived as the user types their email (a known domain swaps the
+  // brand mid-form). Once detected, persisted to localStorage so subsequent
+  // visits on this device skip detection entirely.
+  const [school, setSchool] = useState(() => fromUrl() || fromMemo())
 
   useEffect(() => {
     // Heuristic triggers — either the URL has recovery=1 or the hash carries
@@ -46,6 +54,26 @@ export default function Login() {
       }
     })
     return () => { sub?.subscription?.unsubscribe?.() }
+  }, [])
+
+  // As the user types their email, see if the domain matches a registered
+  // school (e.g. they paste "you@woodstockschool.in") and swap branding on
+  // the fly. Persist whenever it lands on a real school so the next visit
+  // is co-branded from the first paint.
+  useEffect(() => {
+    const detected = byDomain(emailDomain(email))
+    if (detected && detected.slug !== school?.slug) {
+      setSchool(detected)
+      memoize(detected.slug)
+    }
+  }, [email, school?.slug])
+
+  // Whenever the URL/initial-load detection lands on a school, also persist —
+  // covers the deep-link case (?school=woodstock) where the email field is
+  // still empty. Runs once on mount.
+  useEffect(() => {
+    if (school?.slug) memoize(school.slug)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function handleSubmit(e) {
@@ -129,35 +157,62 @@ export default function Login() {
         <div style={{ position: 'absolute', right: -30,  top: -30,  width: 260, height: 260, borderRadius: '50%', border: '1.5px solid rgba(255,255,255,0.1)'  }} />
         <div style={{ position: 'absolute', left: -80, bottom: -80, width: 340, height: 340, borderRadius: '50%', border: '1.5px solid rgba(255,255,255,0.06)' }} />
 
-        {/* Logo */}
-        <Logo size="lg" theme="dark" />
+        {/* Logo — school lockup when we've detected a registered school,
+            otherwise the default Habterra mark + wordmark. The lockup image
+            already includes the wordmark, so we render it raw rather than
+            going through the Logo component. */}
+        {school ? (
+          <img
+            src={school.loginLockupUrl}
+            alt={`${school.displayName} logo`}
+            style={{
+              width: 'auto',
+              maxWidth: 240,
+              height: 110,
+              objectFit: 'contain',
+              objectPosition: 'left center',
+              position: 'relative',
+              zIndex: 1,
+            }}
+          />
+        ) : (
+          <Logo size="lg" theme="dark" />
+        )}
 
-        {/* Centre copy */}
+        {/* Centre copy — body line is school-specific when we know the school,
+            but the "Before you walk in." headline is product positioning that
+            works for everyone. */}
         <div style={{ position: 'relative', zIndex: 1 }}>
           <div style={{ fontFamily: 'var(--font-display)', fontSize: 36, fontWeight: 700, color: '#fff', lineHeight: 1.15, letterSpacing: '-0.02em', marginBottom: 16 }}>
             Before you<br />walk in.
           </div>
           <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.62)', lineHeight: 1.75, maxWidth: 320 }}>
-            Cultural readiness training for international schools — assigned by your school, delivered in the parent's language, tracked to completion.
+            {school?.loginBodyCopy
+              || "Cultural context for international school communities — assigned by your school, delivered in the parent's language, tracked to completion."}
           </div>
         </div>
 
-        {/* Testimonial */}
+        {/* Testimonial / footer attribution. The NLIS quote is a Habterra
+            product testimonial; suppress it on a co-branded screen so a
+            Woodstock parent doesn't see another school's pull-quote on the
+            way in. We still attribute Habterra at the very bottom. */}
         <div style={{ position: 'relative', zIndex: 1 }}>
-          <div style={{
-            borderLeft: '3px solid var(--cal-amber)',
-            paddingLeft: 16,
-            marginBottom: 16,
-          }}>
-            <div style={{ fontSize: 13, fontStyle: 'italic', color: 'rgba(255,255,255,0.78)', lineHeight: 1.7, marginBottom: 8 }}>
-              "The Saudi Arabia module changed the way I open every parent meeting. I finally understood what they were expecting from me."
+          {!school && (
+            <div style={{
+              borderLeft: '3px solid var(--cal-amber)',
+              paddingLeft: 16,
+              marginBottom: 16,
+            }}>
+              <div style={{ fontSize: 13, fontStyle: 'italic', color: 'rgba(255,255,255,0.78)', lineHeight: 1.7, marginBottom: 8 }}>
+                "The Saudi Arabia module changed the way I open every parent meeting. I finally understood what they were expecting from me."
+              </div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', fontFamily: 'var(--font-display)', fontWeight: 500 }}>
+                Secondary teacher · NLIS Riyadh
+              </div>
             </div>
-            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', fontFamily: 'var(--font-display)', fontWeight: 500 }}>
-              Secondary teacher · NLIS Riyadh
-            </div>
-          </div>
+          )}
           <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.12em', textTransform: 'uppercase', fontFamily: 'var(--font-display)', fontWeight: 600 }}>
-            Habterra · habterra.com
+            {school ? 'Powered by Habterra' : 'Habterra · habterra.com'}
           </div>
         </div>
       </div>
@@ -173,9 +228,15 @@ export default function Login() {
       }}>
         <div style={{ width: '100%', maxWidth: 380 }}>
 
-          {/* Heading */}
+          {/* Heading — swaps to the school's display name when branded so a
+              Woodstock parent doesn't see "Sign in to Habterra" on a screen
+              that otherwise carries Woodstock's identity. */}
           <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 700, color: 'var(--cal-ink)', letterSpacing: '-0.02em', marginBottom: 6 }}>
-            {recoveryMode ? 'Set your password' : forgotMode ? 'Reset your password' : 'Sign in to Habterra'}
+            {recoveryMode
+              ? 'Set your password'
+              : forgotMode
+                ? 'Reset your password'
+                : `Sign in to ${school?.displayName || 'Habterra'}`}
           </h1>
           <p style={{ fontSize: 14, color: 'var(--cal-muted)', marginBottom: 36, lineHeight: 1.6 }}>
             {recoveryMode

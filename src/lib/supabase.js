@@ -265,11 +265,29 @@ export async function updateMyPassword(newPassword) {
 }
 
 export async function getProfile(userId) {
-  const { data, error } = await supabase
+  // School branding columns (display_name/short_name/tagline/logo_url) were
+  // added by supabase/school_branding.sql. If that migration hasn't been
+  // applied yet, the rich select fails with a 42703 ("column does not exist").
+  // Fall back to the legacy column set so the app still boots in that case.
+  const richSelect   = '*, school:schools(id, name, domain, display_name, short_name, tagline, logo_url)'
+  const legacySelect = '*, school:schools(id, name, domain)'
+
+  let { data, error } = await supabase
     .from('profiles')
-    .select('*, school:schools(id, name, domain)')
+    .select(richSelect)
     .eq('id', userId)
     .single()
+
+  if (error && /column .*(display_name|short_name|tagline|logo_url).* does not exist/i.test(error.message ?? '')) {
+    const fallback = await supabase
+      .from('profiles')
+      .select(legacySelect)
+      .eq('id', userId)
+      .single()
+    data  = fallback.data
+    error = fallback.error
+  }
+
   if (error) throw error
   return data
 }

@@ -153,7 +153,7 @@ export default function Dashboard() {
             <>
               <div style={{ borderTop: '1px solid var(--cal-border)', margin: '20px 0 14px' }} />
               <div className="label-caps" style={{ marginBottom: 8 }}>School</div>
-              <div style={{ fontSize: 12, color: 'var(--cal-muted)', fontWeight: 500 }}>{school.name}</div>
+              <div style={{ fontSize: 12, color: 'var(--cal-muted)', fontWeight: 500 }}>{school.display_name || school.name}</div>
             </>
           )}
         </aside>

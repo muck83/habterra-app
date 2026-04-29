@@ -126,7 +126,7 @@ export default function Landing() {
       }}>
         <div style={{ textAlign: 'center', marginBottom: 40 }}>
           <div className="label-caps" style={{ color: 'var(--cal-amber)', fontSize: 11, letterSpacing: '0.14em', marginBottom: 14 }}>
-            Two sides of the same conversation
+            A shared conversation
           </div>
           <h2 style={{
             fontFamily: 'var(--font-display)',
@@ -168,14 +168,15 @@ export default function Landing() {
               marginBottom: 16,
               lineHeight: 1.3,
             }}>
-              The interpretive move, before you need it.
+              The context that makes the meeting land.
             </h3>
             <p style={{ fontSize: 15, lineHeight: 1.7, color: 'var(--cal-ink-soft)' }}>
-              You're about to meet a family whose expectations were shaped by CBSE, <em>gaokao</em>,
-              <em> suneung</em>, or <em>tawjihiyya</em>. Habterra gives you the move that changes the
-              meeting: what "95% means nothing if someone got 97%" really means, why the question
-              about ranking is a question about investment, and how to run the conversation so both
-              sides leave heard.
+              You're about to meet a family whose expectations were shaped by a different school
+              system — one where a report card, a ranking, or a university conversation carries a
+              different weight than it does here. Habterra gives you what you need to open the
+              meeting on shared ground: what a parent is really asking when they ask about marks,
+              what investment means in their world, and how to run the conversation so both of you
+              leave understood.
             </p>
           </div>
 
@@ -199,14 +200,13 @@ export default function Landing() {
               marginBottom: 16,
               lineHeight: 1.3,
             }}>
-              A clear, honest guide — not a reassurance.
+              A clear guide to your child's school.
             </h3>
             <p style={{ fontSize: 15, lineHeight: 1.7, color: 'var(--cal-ink-soft)' }}>
-              You made a considered choice — often a brave one — to put your child in an international
-              school. Habterra answers the questions the school hasn't quite answered yet: what a score
-              of "5 out of 7" actually means, which universities recognize the credentials, and how the
-              pathway works for a child in your family's particular situation. In your language, from
-              your school.
+              You've made a considered choice to put your child in an international school. Habterra
+              walks you through what that means in practice: what a score of "5 out of 7" actually
+              signals, which universities recognize the credentials, and how the pathway works for a
+              child in your family's particular situation. In your language, from your school.
             </p>
           </div>
         </div>
@@ -231,7 +231,7 @@ export default function Landing() {
             marginBottom: 14,
             lineHeight: 1.2,
           }}>
-            Research-backed. Built for both sides of the table.
+            Research-backed. Built for teachers and families together.
           </h2>
           <p style={{ fontSize: 15, color: 'var(--cal-muted)', maxWidth: 620, margin: '0 auto', lineHeight: 1.6 }}>
             Each country module is delivered in English and in the family's language,
@@ -317,7 +317,7 @@ export default function Landing() {
             fontWeight: 600,
             marginBottom: 24,
           }}>
-            From one side of the table
+            From a classroom teacher
           </div>
           <blockquote style={{
             fontFamily: 'var(--font-display)',

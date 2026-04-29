@@ -56,7 +56,7 @@ import {
 export default function AdminDashboard() {
   const navigate = useNavigate()
   const { user, profile, school, isSuperAdmin } = useAuth()
-  const schoolName = school?.name ?? MOCK_SCHOOL.name
+  const schoolName = school?.display_name ?? school?.name ?? MOCK_SCHOOL.name
   const [roleFilter, setRoleFilter]   = useState('all')   // 'all' | 'teacher' | 'parent' | 'admin' | 'superadmin'
   const [memberSearch, setMemberSearch] = useState('')
   const [adminView,  setAdminView]    = useState('overview') // 'overview' | 'users' | 'assign'

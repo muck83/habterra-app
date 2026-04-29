@@ -1,5 +1,22 @@
-/* Habterra logo — mark + wordmark */
-export default function Logo({ size = 'md', theme = 'light', showTagline = false }) {
+/* Habterra logo — mark + wordmark.
+ *
+ * Co-branding: when `brandName` is provided (e.g. "Woodstock School"), the
+ * wordmark renders that text instead of "Habterra" and the tagline (if
+ * `showTagline` is true) becomes `brandTagline ?? "Find your footing."`. If a
+ * `brandLogoUrl` image is provided, it replaces the geometric mark — otherwise
+ * the Habterra mark is reused as a neutral placeholder until the school
+ * supplies its own image.
+ *
+ * Habterra remains attributed in the user dropdown as "Powered by Habterra".
+ */
+export default function Logo({
+  size = 'md',
+  theme = 'light',
+  showTagline = false,
+  brandName,
+  brandTagline,
+  brandLogoUrl,
+}) {
   const sizes = {
     sm: { mark: 22, word: 18, tag: 10 },
     md: { mark: 32, word: 26, tag: 12 },
@@ -12,40 +29,57 @@ export default function Logo({ size = 'md', theme = 'light', showTagline = false
   const wordColor  = theme === 'light' ? 'var(--cal-teal)'  : '#FFFFFF'
   const tagColor   = theme === 'light' ? 'var(--cal-muted)' : 'rgba(255,255,255,0.5)'
 
+  const wordmark    = brandName    || 'Habterra'
+  const taglineText = brandName
+    ? (brandTagline || 'Parent & Teacher Companion')
+    : 'Find your footing.'
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        {/* Habterra mark — rooted presence on layered ground */}
-        <svg
-          width={s.mark}
-          height={s.mark}
-          viewBox="0 0 40 40"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          style={{ flexShrink: 0 }}
-        >
-          {/* Deeper context layer — the ground beneath the ground */}
-          <path
-            d="M 4 32 Q 20 23, 36 32"
-            stroke={markColor}
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            opacity="0.42"
-            fill="none"
+        {brandLogoUrl ? (
+          <img
+            src={brandLogoUrl}
+            alt={`${wordmark} logo`}
+            width={s.mark}
+            height={s.mark}
+            style={{ flexShrink: 0, objectFit: 'contain' }}
           />
-          {/* Primary horizon — the ground we stand on */}
-          <path
-            d="M 4 27 Q 20 15, 36 27"
-            stroke={markColor}
-            strokeWidth="2.4"
-            strokeLinecap="round"
+        ) : (
+          /* Habterra mark — rooted presence on layered ground (also used as
+             the neutral placeholder for branded schools that haven't supplied
+             a logo image yet). */
+          <svg
+            width={s.mark}
+            height={s.mark}
+            viewBox="0 0 40 40"
             fill="none"
-          />
-          {/* Inhabitant — the rooted presence at the apex */}
-          <circle cx="20" cy="16" r="5" fill={markColor} />
-          {/* Subtle inner highlight — reads as dimension at larger sizes, invisible at favicon */}
-          <circle cx="18.6" cy="14.8" r="1.2" fill="var(--cal-white)" opacity="0.22" />
-        </svg>
+            xmlns="http://www.w3.org/2000/svg"
+            style={{ flexShrink: 0 }}
+          >
+            {/* Deeper context layer — the ground beneath the ground */}
+            <path
+              d="M 4 32 Q 20 23, 36 32"
+              stroke={markColor}
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              opacity="0.42"
+              fill="none"
+            />
+            {/* Primary horizon — the ground we stand on */}
+            <path
+              d="M 4 27 Q 20 15, 36 27"
+              stroke={markColor}
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              fill="none"
+            />
+            {/* Inhabitant — the rooted presence at the apex */}
+            <circle cx="20" cy="16" r="5" fill={markColor} />
+            {/* Subtle inner highlight — reads as dimension at larger sizes, invisible at favicon */}
+            <circle cx="18.6" cy="14.8" r="1.2" fill="var(--cal-white)" opacity="0.22" />
+          </svg>
+        )}
 
         {/* Wordmark */}
         <span style={{
@@ -56,7 +90,7 @@ export default function Logo({ size = 'md', theme = 'light', showTagline = false
           color: wordColor,
           lineHeight: 1,
         }}>
-          Habterra
+          {wordmark}
         </span>
       </div>
 
@@ -70,7 +104,7 @@ export default function Logo({ size = 'md', theme = 'light', showTagline = false
           paddingLeft: s.mark + 10,
           letterSpacing: '0.01em',
         }}>
-          Find your footing.
+          {taglineText}
         </span>
       )}
     </div>

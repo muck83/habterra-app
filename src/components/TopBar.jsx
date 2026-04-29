@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { signOut } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { memoize as memoizeSchool } from '../lib/schoolBranding'
 import Logo from './Logo'
 
 export default function TopBar({ activePage = 'modules' }) {
@@ -14,6 +15,11 @@ export default function TopBar({ activePage = 'modules' }) {
     : profile?.email?.[0]?.toUpperCase() ?? '?'
 
   async function handleSignOut() {
+    // Clear the school-branding memo on sign-out so that a Woodstock-branded
+    // device doesn't keep showing Woodstock identity to whoever signs in
+    // next on the same machine. The memo will be re-set automatically when
+    // the next user types a recognised email or clicks a deep link.
+    memoizeSchool(null)
     await signOut()
     navigate('/login')
   }
@@ -30,7 +36,12 @@ export default function TopBar({ activePage = 'modules' }) {
       position: 'relative',
       zIndex: 10,
     }}>
-      <Logo size="sm" theme="dark" />
+      <Logo
+        size="sm"
+        theme="dark"
+        brandName={school?.display_name || school?.name}
+        brandLogoUrl={school?.logo_url || undefined}
+      />
 
       <nav style={{ display: 'flex', gap: 4 }}>
         {[
@@ -61,11 +72,9 @@ export default function TopBar({ activePage = 'modules' }) {
       </nav>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, position: 'relative' }}>
-        {school && (
-          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)' }}>
-            {school.name}
-          </span>
-        )}
+        {/* The school name used to live here next to the avatar; it's now
+            rendered as the wordmark on the left of the topbar via the Logo
+            component's brandName override, so we no longer duplicate it. */}
         <button
           onClick={() => setMenuOpen(o => !o)}
           style={{
@@ -120,6 +129,26 @@ export default function TopBar({ activePage = 'modules' }) {
             >
               Sign out
             </button>
+            {/* Quiet Habterra attribution — shows up only when a school has
+                opted into co-branding (i.e. the topbar wordmark is the school
+                name, not "Habterra"). For the unbranded NLIS-style mock and
+                any school that hasn't set display_name, this stays hidden so
+                we don't redundantly say "Powered by Habterra" on a Habterra-
+                branded topbar. */}
+            {school?.display_name && (
+              <div style={{
+                padding: '8px 16px 12px',
+                borderTop: '1px solid var(--cal-border-lt)',
+                fontSize: 10,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: 'var(--cal-muted)',
+                fontFamily: 'var(--font-display)',
+                fontWeight: 600,
+              }}>
+                Powered by Habterra
+              </div>
+            )}
           </div>
         )}
       </div>
